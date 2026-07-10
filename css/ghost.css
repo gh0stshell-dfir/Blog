@@ -419,6 +419,86 @@ body {
     font-size: 0.95rem;
 }
 
+/* Collapsible command sections */
+.tool-section {
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    background: var(--card);
+    overflow: hidden;
+}
+
+.tool-section.section-hidden {
+    display: none;
+}
+
+.tool-section-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+    background: rgba(0, 102, 255, 0.06);
+    border: none;
+    color: var(--light);
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+    text-align: left;
+}
+
+.tool-section-toggle:hover {
+    background: rgba(0, 212, 255, 0.1);
+    color: var(--primary);
+}
+
+.tool-section-chevron {
+    width: 1rem;
+    color: var(--muted);
+    transition: transform var(--transition);
+}
+
+.tool-section.open .tool-section-chevron {
+    transform: rotate(90deg);
+    color: var(--primary);
+}
+
+.tool-section-icon {
+    color: var(--secondary);
+}
+
+.tool-section-title {
+    flex: 1;
+}
+
+.tool-section-count {
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 0.15rem 0.55rem;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.tool-section-body {
+    display: none;
+    padding: 1rem;
+    border-top: 1px solid var(--card-border);
+}
+
+.tool-section.open .tool-section-body {
+    display: block;
+}
+
+.tool-section-body .tools-container {
+    margin: 0;
+}
+
 /* Tool cards grid */
 .tools-container {
     display: grid;
@@ -514,6 +594,15 @@ body {
     color: var(--light);
     word-break: break-word;
     white-space: pre-wrap;
+}
+
+.kql-prompt::before {
+    content: 'KQL>';
+    color: var(--accent);
+}
+
+.kql-box {
+    border-top: 1px solid rgba(0, 212, 255, 0.12);
 }
 
 /* Tools reference */

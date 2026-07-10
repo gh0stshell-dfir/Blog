@@ -3,26 +3,31 @@
 
     let offsecData = [];
     let dfirData = [];
+    let kqlData = [];
     let commandTemplates = {};
     let activeTab = 'offsec';
     let searchQuery = '';
 
     const iconMap = {
+        nmap: 'fa-network-wired',
+        nuclei: 'fa-radiation',
+        'full-scans': 'fa-layer-group',
+        gobuster: 'fa-folder-open',
         subdomain: 'fa-sitemap',
         urls: 'fa-link',
         sensitive: 'fa-eye',
         xss: 'fa-code',
         lfi: 'fa-file-code',
         cors: 'fa-globe',
+        ffuf: 'fa-bolt',
         wordpress: 'fa-wordpress',
-        network: 'fa-network-wired',
-        'web-recon': 'fa-spider',
         parameters: 'fa-cogs',
-        javascript: 'fa-code',
-        'content-type': 'fa-file-code',
+        javascript: 'fa-js',
         shodan: 'fa-search',
-        'ffuf-request': 'fa-file-code',
-        advanced: 'fa-bolt',
+        device: 'fa-desktop',
+        identity: 'fa-user-shield',
+        email: 'fa-envelope',
+        hunting: 'fa-crosshairs',
     };
 
     const toolsRef = [
@@ -40,20 +45,24 @@
         { name: 'YARA', desc: 'Pattern matching for malware', url: 'https://github.com/VirusTotal/yara' },
         { name: 'Autopsy', desc: 'Digital forensics platform', url: 'https://www.autopsy.com/' },
         { name: 'Chainsaw', desc: 'Sigma-powered EVTX hunting', url: 'https://github.com/WithSecure/chainsaw' },
+        { name: 'Kusto / KQL', desc: 'Microsoft Sentinel & Defender query language', url: 'https://learn.microsoft.com/en-us/kusto/query/' },
     ];
 
     async function loadData() {
         if (window.GHOST_DATA) {
             offsecData = window.GHOST_DATA.offsec;
             dfirData = window.GHOST_DATA.dfir;
+            kqlData = window.GHOST_DATA.kql || [];
             return;
         }
-        const [offsecRes, dfirRes] = await Promise.all([
+        const [offsecRes, dfirRes, kqlRes] = await Promise.all([
             fetch('js/offsec-commands.json'),
             fetch('js/dfir-commands.json'),
+            fetch('js/kql-commands.json'),
         ]);
         offsecData = await offsecRes.json();
         dfirData = await dfirRes.json();
+        kqlData = await kqlRes.json();
     }
 
     function escapeHtml(str) {
@@ -65,6 +74,9 @@
     function renderCommandCard(cmd, section) {
         const id = `${section}-${cmd.id}`;
         commandTemplates[id] = cmd.command;
+        const isKql = section.startsWith('kql');
+        const boxClass = isKql ? 'terminal-box kql-box' : 'terminal-box';
+        const promptClass = isKql ? 'prompt kql-prompt' : 'prompt';
         return `
             <div class="tool-card" data-search="${escapeHtml((cmd.title + ' ' + cmd.description + ' ' + cmd.command).toLowerCase())}">
                 <div class="tool-header">
@@ -74,8 +86,8 @@
                     </button>
                 </div>
                 <div class="tool-description">${escapeHtml(cmd.description)}</div>
-                <div class="terminal-box">
-                    <span class="prompt" aria-hidden="true"></span>
+                <div class="${boxClass}">
+                    <span class="${promptClass}" aria-hidden="true"></span>
                     <span class="command" id="${id}">${escapeHtml(cmd.command)}</span>
                 </div>
             </div>`;
@@ -84,37 +96,75 @@
     function renderSection(category, section) {
         const icon = category.icon || iconMap[category.id] || 'fa-terminal';
         const cards = category.commands.map((c) => renderCommandCard(c, section)).join('');
+        const sectionId = `${section}-${category.id}`;
+        const isOpen = category.defaultOpen ? 'open' : '';
+        const expanded = category.defaultOpen ? 'true' : 'false';
+
         return `
-            <h2 class="tool-category" id="${section}-${category.id}">
-                <i class="fas ${icon}"></i> ${escapeHtml(category.title)}
-            </h2>
-            <div class="tools-container" data-section="${section}-${category.id}">
-                ${cards}
-            </div>`;
+            <section class="tool-section ${isOpen}" id="${sectionId}" data-section="${sectionId}">
+                <button class="tool-section-toggle" aria-expanded="${expanded}" aria-controls="${sectionId}-body">
+                    <span class="tool-section-chevron" aria-hidden="true"><i class="fas fa-chevron-right"></i></span>
+                    <span class="tool-section-icon"><i class="fas ${icon}"></i></span>
+                    <span class="tool-section-title">${escapeHtml(category.title)}</span>
+                    <span class="tool-section-count">${category.commands.length}</span>
+                </button>
+                <div class="tool-section-body" id="${sectionId}-body">
+                    <div class="tools-container">
+                        ${cards}
+                    </div>
+                </div>
+            </section>`;
     }
 
     function renderPanels() {
-        const offsecPanel = document.getElementById('offsec-panel');
-        const dfirPanel = document.getElementById('dfir-panel');
-
-        offsecPanel.innerHTML = offsecData.map((c) => renderSection(c, 'offsec')).join('');
-        dfirPanel.innerHTML = dfirData.map((c) => renderSection(c, 'dfir')).join('');
+        document.getElementById('offsec-panel').innerHTML = offsecData.map((c) => renderSection(c, 'offsec')).join('');
+        document.getElementById('dfir-panel').innerHTML = dfirData.map((c) => renderSection(c, 'dfir')).join('');
+        document.getElementById('kql-panel').innerHTML = kqlData.map((c) => renderSection(c, 'kql')).join('');
 
         renderSectionNav();
         renderToolsRef();
         bindCopyButtons();
+        bindSectionToggles();
         applySearch();
+    }
+
+    function bindSectionToggles() {
+        document.querySelectorAll('.tool-section-toggle').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const section = btn.closest('.tool-section');
+                const isOpen = section.classList.toggle('open');
+                btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            });
+        });
+    }
+
+    function getActiveData() {
+        if (activeTab === 'offsec') return offsecData;
+        if (activeTab === 'dfir') return dfirData;
+        if (activeTab === 'kql') return kqlData;
+        return [];
     }
 
     function renderSectionNav() {
         const nav = document.getElementById('section-nav');
-        const data = activeTab === 'offsec' ? offsecData : activeTab === 'dfir' ? dfirData : [];
+        const data = getActiveData();
         nav.innerHTML = data
             .map(
                 (c) =>
-                    `<a href="#${activeTab}-${c.id}" class="section-pill">${escapeHtml(c.title)}</a>`
+                    `<a href="#${activeTab}-${c.id}" class="section-pill" data-section-target="${activeTab}-${c.id}">${escapeHtml(c.title)}</a>`
             )
             .join('');
+
+        nav.querySelectorAll('.section-pill').forEach((pill) => {
+            pill.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.getElementById(pill.dataset.sectionTarget);
+                if (!target) return;
+                target.classList.add('open');
+                target.querySelector('.tool-section-toggle')?.setAttribute('aria-expanded', 'true');
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
     }
 
     function renderToolsRef() {
@@ -151,15 +201,16 @@
     async function copyCommand(id, btn) {
         const el = document.getElementById(id);
         if (!el) return;
+        const text = id.startsWith('kql-') ? el.textContent : fixCommandSpacing(el.textContent);
         try {
-            await navigator.clipboard.writeText(fixCommandSpacing(el.textContent));
+            await navigator.clipboard.writeText(text);
             if (btn) {
                 btn.classList.add('copied');
                 setTimeout(() => btn.classList.remove('copied'), 500);
             }
-            showNotification('Command copied to clipboard');
+            showNotification('Copied to clipboard');
         } catch {
-            showNotification('Failed to copy command', true);
+            showNotification('Failed to copy', true);
         }
     }
 
@@ -186,20 +237,24 @@
         if (!panel) return;
 
         let visible = 0;
-        panel.querySelectorAll('.tool-card').forEach((card) => {
-            const match = !q || card.dataset.search.includes(q);
-            card.classList.toggle('hidden', !match);
-            if (match) visible++;
-        });
 
-        panel.querySelectorAll('.tool-category').forEach((header) => {
-            const container = header.nextElementSibling;
-            if (!container) return;
-            const hasVisible = [...container.querySelectorAll('.tool-card')].some(
-                (c) => !c.classList.contains('hidden')
-            );
-            header.style.display = hasVisible ? '' : 'none';
-            container.style.display = hasVisible ? '' : 'none';
+        panel.querySelectorAll('.tool-section').forEach((section) => {
+            let sectionVisible = 0;
+            section.querySelectorAll('.tool-card').forEach((card) => {
+                const match = !q || card.dataset.search.includes(q);
+                card.classList.toggle('hidden', !match);
+                if (match) {
+                    visible++;
+                    sectionVisible++;
+                }
+            });
+
+            if (q && sectionVisible > 0) {
+                section.classList.add('open');
+                section.querySelector('.tool-section-toggle')?.setAttribute('aria-expanded', 'true');
+            }
+
+            section.classList.toggle('section-hidden', sectionVisible === 0 && !!q);
         });
 
         let noResults = panel.querySelector('.no-results');
@@ -253,6 +308,5 @@
         document.querySelectorAll('.tab-btn').forEach((btn) => {
             btn.addEventListener('click', () => switchTab(btn.dataset.tab));
         });
-
     });
 })();

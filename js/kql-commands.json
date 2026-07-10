@@ -1,0 +1,73 @@
+[
+  {
+    "id": "device",
+    "title": "Device",
+    "icon": "fa-desktop",
+    "defaultOpen": true,
+    "commands": [
+      {
+        "id": "device-process-placeholder",
+        "title": "Process creation — template",
+        "description": "Placeholder. Replace filters with your hunt criteria.",
+        "command": "DeviceProcessEvents\n| where Timestamp > ago(7d)\n| where ActionType == \"ProcessCreated\"\n| project Timestamp, DeviceName, InitiatingProcessFileName, FileName, ProcessCommandLine\n| take 100"
+      },
+      {
+        "id": "device-network-placeholder",
+        "title": "Outbound connection — template",
+        "description": "Placeholder. Filter by remote IP, port, or process.",
+        "command": "DeviceNetworkEvents\n| where Timestamp > ago(7d)\n| where RemotePort == 443\n| project Timestamp, DeviceName, InitiatingProcessFileName, RemoteIP, RemotePort\n| take 100"
+      }
+    ]
+  },
+  {
+    "id": "identity",
+    "title": "Identity & Auth",
+    "icon": "fa-user-shield",
+    "commands": [
+      {
+        "id": "signin-failures-placeholder",
+        "title": "Failed sign-ins — template",
+        "description": "Placeholder. Add account, IP, or app filters as needed.",
+        "command": "SigninLogs\n| where TimeGenerated > ago(24h)\n| where ResultType != 0\n| summarize FailedAttempts = count() by UserPrincipalName, IPAddress\n| order by FailedAttempts desc"
+      },
+      {
+        "id": "risky-signin-placeholder",
+        "title": "Risky sign-ins — template",
+        "description": "Placeholder. Requires Entra ID P2 / Identity Protection.",
+        "command": "AADIdentityProtectionSignInLogs\n| where TimeGenerated > ago(7d)\n| where RiskLevelDuringSignIn in (\"medium\", \"high\")\n| project TimeGenerated, UserPrincipalName, IPAddress, RiskLevelDuringSignIn, RiskDetail"
+      }
+    ]
+  },
+  {
+    "id": "email",
+    "title": "Email & Phishing",
+    "icon": "fa-envelope",
+    "commands": [
+      {
+        "id": "email-threat-placeholder",
+        "title": "Malicious email — template",
+        "description": "Placeholder. Defender for Office 365 / MDO required.",
+        "command": "EmailEvents\n| where Timestamp > ago(7d)\n| where ThreatTypes has \"Phish\"\n| project Timestamp, SenderFromAddress, RecipientEmailAddress, Subject, DeliveryAction"
+      }
+    ]
+  },
+  {
+    "id": "hunting",
+    "title": "Threat Hunting",
+    "icon": "fa-crosshairs",
+    "commands": [
+      {
+        "id": "powershell-encoded-placeholder",
+        "title": "Encoded PowerShell — template",
+        "description": "Placeholder. Hunt for common LOLBin abuse patterns.",
+        "command": "DeviceProcessEvents\n| where Timestamp > ago(7d)\n| where FileName =~ \"powershell.exe\"\n| where ProcessCommandLine has_any (\"-enc\", \"-EncodedCommand\", \"FromBase64String\")\n| project Timestamp, DeviceName, AccountName, ProcessCommandLine"
+      },
+      {
+        "id": "lolbin-schtasks-placeholder",
+        "title": "Schtasks creation — template",
+        "description": "Placeholder. Scheduled task creation via command line.",
+        "command": "DeviceProcessEvents\n| where Timestamp > ago(7d)\n| where FileName =~ \"schtasks.exe\"\n| where ProcessCommandLine has \"Create\"\n| project Timestamp, DeviceName, AccountName, ProcessCommandLine"
+      }
+    ]
+  }
+]
