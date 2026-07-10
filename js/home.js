@@ -22,9 +22,15 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('blog-summaries');
         const writeups = [...window.GHOST_WRITEUPS].sort((a, b) => b.date.localeCompare(a.date));
-        const latest = writeups.slice(0, 4);
 
-        document.getElementById('blog-summaries').innerHTML = latest.map(renderSummaryCard).join('');
+        if (!writeups.length) {
+            container.innerHTML =
+                '<div class="no-results"><i class="fas fa-pen-nib"></i> No writeups yet — check back soon.</div>';
+            return;
+        }
+
+        container.innerHTML = writeups.slice(0, 4).map(renderSummaryCard).join('');
     });
 })();

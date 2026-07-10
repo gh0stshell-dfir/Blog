@@ -38,6 +38,13 @@
     function renderList() {
         const grid = document.getElementById('writeups-grid');
         const data = window.GHOST_WRITEUPS;
+
+        if (!data.length) {
+            grid.innerHTML =
+                '<div class="no-results"><i class="fas fa-pen-nib"></i> No writeups yet — check back soon.</div>';
+            return;
+        }
+
         grid.innerHTML = data.map((w) => renderCard(w)).join('');
         applyFilters();
     }
@@ -125,8 +132,13 @@
     }
 
     function renderTagFilters() {
-        const allTags = [...new Set(window.GHOST_WRITEUPS.flatMap((w) => w.tags))].sort();
         const container = document.getElementById('tag-filters');
+        if (!window.GHOST_WRITEUPS.length) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const allTags = [...new Set(window.GHOST_WRITEUPS.flatMap((w) => w.tags))].sort();
         container.innerHTML =
             '<button class="filter-tag active" data-tag="all">All</button>' +
             allTags.map((t) => `<button class="filter-tag" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('');
