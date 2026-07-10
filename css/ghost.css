@@ -1198,6 +1198,33 @@ footer {
     color: var(--accent);
 }
 
+.writeup-body h3 {
+    color: var(--light);
+    font-size: 0.9rem;
+    margin: 1.25rem 0 0.5rem;
+}
+
+.writeup-body blockquote {
+    border-left: 3px solid var(--primary);
+    margin: 1rem 0;
+    padding: 0.5rem 0 0.5rem 1rem;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.writeup-body hr {
+    border: none;
+    border-top: 1px solid var(--card-border);
+    margin: 1.5rem 0;
+}
+
+.writeup-body img {
+    max-width: 100%;
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    margin: 1rem 0;
+}
+
 @media (max-width: 768px) {
     .hero-title {
         font-size: 2rem;
