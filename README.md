@@ -2,6 +2,13 @@
 
 Live site: **https://gh0stshell-dfir.github.io/Blog/**
 
+> Use the `/Blog/` URL — `https://gh0stshell-dfir.github.io/` alone will 404.
+
+Writeups page: **https://gh0stshell-dfir.github.io/Blog/writeups.html**
+
+- [CastleRat Delivery Chain](https://gh0stshell-dfir.github.io/Blog/writeups.html#castle-rat-delivery-chain)
+- [Ditto Delivery Chain](https://gh0stshell-dfir.github.io/Blog/writeups.html#ditto-delivery-chain)
+
 Toolkit, artifact references, and investigation writeups.
 
 ## Writeups

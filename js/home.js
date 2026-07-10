@@ -14,7 +14,7 @@
                     </div>
                 </div>
                 <h3><a href="writeups.html#${escapeHtml(writeup.id)}">${escapeHtml(writeup.title)}</a></h3>
-                <p class="writeup-excerpt">${escapeHtml(writeup.excerpt)}</p>
+                <p class="writeup-excerpt">${escapeHtml(writeup.summary)}</p>
                 <a href="writeups.html#${escapeHtml(writeup.id)}" class="read-more">
                     Read more <i class="fas fa-arrow-right"></i>
                 </a>
