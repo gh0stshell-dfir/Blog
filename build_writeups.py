@@ -104,7 +104,7 @@ def load_writeup(path: Path) -> dict:
 
 
 def main() -> None:
-    files = sorted(WRITEUPS_DIR.glob("*.md"))
+    files = sorted(path for path in WRITEUPS_DIR.glob("*.md") if path.name.lower() != "readme.md")
     writeups = [load_writeup(path) for path in files]
     writeups.sort(key=lambda item: item.get("date", ""), reverse=True)
 
