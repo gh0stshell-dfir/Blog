@@ -3,6 +3,7 @@ window.GHOST_DATA = {
     {
       "id": "nmap",
       "title": "Nmap",
+      "order": 1,
       "icon": "fa-network-wired",
       "defaultOpen": true,
       "commands": [
@@ -53,6 +54,7 @@ window.GHOST_DATA = {
     {
       "id": "nuclei",
       "title": "Nuclei",
+      "order": 2,
       "icon": "fa-radiation",
       "defaultOpen": true,
       "commands": [
@@ -67,6 +69,12 @@ window.GHOST_DATA = {
           "title": "Critical & High Only",
           "description": "Filter findings to critical and high severity.",
           "command": "nuclei -u https://example.com -severity critical,high -o nuclei-critical.txt"
+        },
+        {
+          "id": "nuclei-panels",
+          "title": "Panels / Default Login / Exposure",
+          "description": "Focused scan for admin panels, default creds, and exposed services.",
+          "command": "nuclei -u https://example.com -tags panel,default-login,exposure,misconfig -severity medium,high,critical -o nuclei-panels.txt"
         },
         {
           "id": "nuclei-tags",
@@ -89,10 +97,55 @@ window.GHOST_DATA = {
       ]
     },
     {
+      "id": "web-recon",
+      "title": "Web Recon",
+      "order": 3,
+      "icon": "fa-spider",
+      "defaultOpen": true,
+      "commands": [
+        {
+          "id": "httpx-single",
+          "title": "Httpx \u2014 Single Target",
+          "description": "Probe a URL for status, title, tech stack, and IP.",
+          "command": "httpx -u https://example.com -title -tech-detect -status-code -server -ip -follow-redirects -o httpx-out.txt"
+        },
+        {
+          "id": "httpx-ip",
+          "title": "Httpx \u2014 Probe External IP",
+          "description": "Check an IP for live web services on common ports (C2/panel triage).",
+          "command": "echo example.com | httpx -ip -title -tech-detect -status-code -server -ports 80,443,8080,8443,8000,8888 -o ip-probe.txt"
+        },
+        {
+          "id": "curl-headers",
+          "title": "curl \u2014 Response Headers",
+          "description": "Quick header grab for server, redirects, and security headers.",
+          "command": "curl -sI https://example.com"
+        },
+        {
+          "id": "curl-follow",
+          "title": "curl \u2014 Follow Redirect Chain",
+          "description": "Trace redirect chain and final response headers.",
+          "command": "curl -sIL https://example.com"
+        },
+        {
+          "id": "gobuster-dir",
+          "title": "Gobuster \u2014 Directory Brute Force",
+          "description": "Discover hidden directories and files on a web server.",
+          "command": "gobuster dir -u https://example.com -w /usr/share/wordlists/seclists/Discovery/Web-Content/raft-medium-directories.txt -x php,html,js,txt,bak -t 50 -o gobuster-dirs.txt"
+        },
+        {
+          "id": "gobuster-vhost",
+          "title": "Gobuster \u2014 Vhost Discovery",
+          "description": "Brute force virtual hosts on the same IP.",
+          "command": "gobuster vhost -u https://example.com -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt -t 50 -o gobuster-vhosts.txt"
+        }
+      ]
+    },
+    {
       "id": "full-scans",
       "title": "Full Scans & Pipelines",
+      "order": 4,
       "icon": "fa-layer-group",
-      "defaultOpen": true,
       "commands": [
         {
           "id": "web-recon-pipeline",
@@ -103,45 +156,79 @@ window.GHOST_DATA = {
         {
           "id": "httpx-nuclei",
           "title": "Httpx \u2192 Nuclei Sweep",
-          "description": "Probe subdomains for live web services, then Nuclei scan.",
-          "command": "cat subexample.coms_alive.txt | httpx -silent -status-code -title -tech-detect -o alive.txt && nuclei -l alive.txt -severity critical,high,medium -c 40 -o nuclei-sweep.txt"
+          "description": "Probe hosts for live web services, then Nuclei scan.",
+          "command": "cat targets.txt | httpx -silent -status-code -title -tech-detect -o alive.txt && nuclei -l alive.txt -severity critical,high,medium -c 40 -o nuclei-sweep.txt"
         },
         {
-          "id": "subfinder-httpx-nuclei",
-          "title": "Subfinder \u2192 Httpx \u2192 Nuclei",
-          "description": "Subdomain enum, live host filter, then vulnerability scan.",
-          "command": "subfinder -d example.com -all -silent | httpx -silent -o alive.txt && nuclei -l alive.txt -severity critical,high -c 50 -o nuclei-results.txt"
+          "id": "nmap-httpx-nuclei",
+          "title": "Nmap \u2192 Httpx \u2192 Nuclei",
+          "description": "Port scan an IP, probe web ports, then vulnerability scan.",
+          "command": "nmap -sV -p 80,443,8080,8443 example.com -oG - | awk '/Status: Open/{print $2}' | httpx -silent -o alive.txt && nuclei -l alive.txt -tags panel,exposure,cve -severity high,critical -o nuclei.txt"
         }
       ]
     },
     {
-      "id": "gobuster",
-      "title": "Gobuster",
-      "icon": "fa-folder-open",
+      "id": "sensitive",
+      "title": "Sensitive Data & Panels",
+      "order": 5,
+      "icon": "fa-eye",
       "commands": [
         {
-          "id": "gobuster-dir",
-          "title": "Directory Brute Force",
-          "description": "Discover hidden directories and files on a web server.",
-          "command": "gobuster dir -u https://example.com -w /usr/share/wordlists/seclists/Discovery/Web-Content/raft-medium-directories.txt -x php,html,js,txt,bak -t 50 -o gobuster-dirs.txt"
+          "id": "git-detection",
+          "title": "Git Repository Detection",
+          "description": "Probe hosts for exposed .git directories.",
+          "command": "echo https://example.com | httpx -path \"/.git/\" -mc 200 -location -ms \"Index of\" -probe"
         },
         {
-          "id": "gobuster-vhost",
-          "title": "Vhost Discovery",
-          "description": "Brute force virtual hosts on the same IP.",
-          "command": "gobuster vhost -u https://example.com -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt -t 50 -o gobuster-vhosts.txt"
+          "id": "s3-buckets",
+          "title": "AWS S3 Bucket Finder",
+          "description": "Scan for S3 buckets associated with the target domain.",
+          "command": "s3scanner scan -d example.com"
         },
         {
-          "id": "gobuster-dns",
-          "title": "DNS Subdomain Enum",
-          "description": "Enumerate subdomains via DNS brute force.",
-          "command": "gobuster dns -d example.com -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-110000.txt -t 50 -o gobuster-dns.txt"
+          "id": "api-keys",
+          "title": "API Key Finder (JS)",
+          "description": "Search JavaScript files for exposed keys and tokens.",
+          "command": "cat allurls.txt | grep -E \"\\.js$\" | httpx -mc 200 -content-type | grep -E \"application/javascript|text/javascript\" | cut -d' ' -f1 | xargs -I% curl -s % | grep -E \"(API_KEY|api_key|apikey|secret|token|password)\""
+        },
+        {
+          "id": "sensitive-files",
+          "title": "Sensitive File Detection",
+          "description": "Grep collected URLs for sensitive file extensions.",
+          "command": "cat allurls.txt | grep -E \"\\.xls|\\.xml|\\.xlsx|\\.json|\\.pdf|\\.sql|\\.doc|\\.docx|\\.pptx|\\.txt|\\.zip|\\.tar\\.gz|\\.tgz|\\.bak|\\.7z|\\.rar|\\.log|\\.cache|\\.secret|\\.db|\\.backup|\\.yml|\\.gz|\\.config|\\.csv|\\.yaml|\\.md|\\.md5\""
+        }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "URL Collection",
+      "order": 6,
+      "icon": "fa-link",
+      "commands": [
+        {
+          "id": "gau-urls",
+          "title": "GAU URL Collection",
+          "description": "Collect historical URLs with gau and filter for parameters.",
+          "command": "echo example.com | gau --mc 200 | urldedupe > urls.txt"
+        },
+        {
+          "id": "katana-passive",
+          "title": "Katana \u2014 Passive URL Collection",
+          "description": "Collect URLs from passive sources via katana.",
+          "command": "katana -u https://example.com -d 5 -ps -pss waybackarchive,commoncrawl,alienvault -kf -jc -fx -ef woff,css,png,svg,jpg,woff2,jpeg,gif,svg -o allurls.txt"
+        },
+        {
+          "id": "katana-gau",
+          "title": "Katana + GAU Combined",
+          "description": "Multi-source URL collection and deduplication.",
+          "command": "echo example.com | gau --mc 200 | urldedupe > urls.txt && katana -u https://example.com -d 5 -o katana-urls.txt"
         }
       ]
     },
     {
       "id": "subdomain",
       "title": "Subdomain Enumeration",
+      "order": 7,
       "icon": "fa-sitemap",
       "commands": [
         {
@@ -154,7 +241,13 @@ window.GHOST_DATA = {
           "id": "httpx-filter",
           "title": "Httpx \u2014 Live Subdomain Filter",
           "description": "Filter discovered subdomains to alive hosts on common web ports.",
-          "command": "cat subexample.com.txt | httpx-toolkit -ports 80,443,8080,8000,8888 -threads 200 > subexample.coms_alive.txt"
+          "command": "cat subexample.com.txt | httpx -ports 80,443,8080,8000,8888 -threads 200 -o subexample.coms_alive.txt"
+        },
+        {
+          "id": "gobuster-dns",
+          "title": "Gobuster \u2014 DNS Subdomain Enum",
+          "description": "Enumerate subdomains via DNS brute force.",
+          "command": "gobuster dns -d example.com -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-110000.txt -t 50 -o gobuster-dns.txt"
         },
         {
           "id": "subzy-check",
@@ -165,64 +258,9 @@ window.GHOST_DATA = {
       ]
     },
     {
-      "id": "urls",
-      "title": "URL Collection",
-      "icon": "fa-link",
-      "commands": [
-        {
-          "id": "katana-passive",
-          "title": "Katana \u2014 Passive URL Collection",
-          "description": "Collect URLs from passive sources via katana.",
-          "command": "katana -u subexample.coms_alive.txt -d 5 -ps -pss waybackarchive,commoncrawl,alienvault -kf -jc -fx -ef woff,css,png,svg,jpg,woff2,jpeg,gif,svg -o allurls.txt"
-        },
-        {
-          "id": "gau-urls",
-          "title": "GAU URL Collection",
-          "description": "Collect historical URLs with gau and filter for parameters.",
-          "command": "echo example.com | gau --mc 200 | urldedupe > urls.txt"
-        },
-        {
-          "id": "advanced-urls",
-          "title": "Katana + GAU Combined",
-          "description": "Multi-source URL collection and deduplication.",
-          "command": "echo example.com | gau --mc 200 | urldedupe > urls.txt && katana -u https://example.com -d 5 -o katana-urls.txt"
-        }
-      ]
-    },
-    {
-      "id": "sensitive",
-      "title": "Sensitive Data Discovery",
-      "icon": "fa-eye",
-      "commands": [
-        {
-          "id": "sensitive-files",
-          "title": "Sensitive File Detection",
-          "description": "Grep collected URLs for sensitive file extensions.",
-          "command": "cat allurls.txt | grep -E \"\\.xls|\\.xml|\\.xlsx|\\.json|\\.pdf|\\.sql|\\.doc|\\.docx|\\.pptx|\\.txt|\\.zip|\\.tar\\.gz|\\.tgz|\\.bak|\\.7z|\\.rar|\\.log|\\.cache|\\.secret|\\.db|\\.backup|\\.yml|\\.gz|\\.config|\\.csv|\\.yaml|\\.md|\\.md5\""
-        },
-        {
-          "id": "git-detection",
-          "title": "Git Repository Detection",
-          "description": "Probe hosts for exposed .git directories.",
-          "command": "cat example.coms.txt | httpx-toolkit -sc -server -cl -path \"/.git/\" -mc 200 -location -ms \"Index of\" -probe"
-        },
-        {
-          "id": "s3-buckets",
-          "title": "AWS S3 Bucket Finder",
-          "description": "Scan for S3 buckets associated with the target domain.",
-          "command": "s3scanner scan -d example.com"
-        },
-        {
-          "id": "api-keys",
-          "title": "API Key Finder (JS)",
-          "description": "Search JavaScript files for exposed keys and tokens.",
-          "command": "cat allurls.txt | grep -E \"\\.js$\" | httpx-toolkit -mc 200 -content-type | grep -E \"application/javascript|text/javascript\" | cut -d' ' -f1 | xargs -I% curl -s % | grep -E \"(API_KEY|api_key|apikey|secret|token|password)\""
-        }
-      ]
-    },
-    {
       "id": "xss",
       "title": "XSS Testing",
+      "order": 8,
       "icon": "fa-code",
       "commands": [
         {
@@ -248,6 +286,7 @@ window.GHOST_DATA = {
     {
       "id": "lfi",
       "title": "LFI Testing",
+      "order": 9,
       "icon": "fa-file-code",
       "commands": [
         {
@@ -261,6 +300,7 @@ window.GHOST_DATA = {
     {
       "id": "cors",
       "title": "CORS Testing",
+      "order": 10,
       "icon": "fa-globe",
       "commands": [
         {
@@ -286,6 +326,7 @@ window.GHOST_DATA = {
     {
       "id": "ffuf",
       "title": "FFuF",
+      "order": 11,
       "icon": "fa-bolt",
       "commands": [
         {
@@ -305,6 +346,7 @@ window.GHOST_DATA = {
     {
       "id": "parameters",
       "title": "Parameter Discovery",
+      "order": 12,
       "icon": "fa-cogs",
       "commands": [
         {
@@ -324,6 +366,7 @@ window.GHOST_DATA = {
     {
       "id": "javascript",
       "title": "JavaScript Analysis",
+      "order": 13,
       "icon": "fa-js",
       "commands": [
         {
@@ -343,6 +386,7 @@ window.GHOST_DATA = {
     {
       "id": "wordpress",
       "title": "WordPress",
+      "order": 14,
       "icon": "fa-wordpress",
       "commands": [
         {
@@ -356,6 +400,7 @@ window.GHOST_DATA = {
     {
       "id": "shodan",
       "title": "Shodan Dorks",
+      "order": 15,
       "icon": "fa-search",
       "commands": [
         {
@@ -363,6 +408,12 @@ window.GHOST_DATA = {
           "title": "SSL Certificate Search",
           "description": "Find hosts with certificates issued for the target domain.",
           "command": "Ssl.cert.subject.CN:\"example.com\" 200"
+        },
+        {
+          "id": "shodan-ip",
+          "title": "Shodan \u2014 IP Lookup",
+          "description": "Look up services and banners on a known external IP.",
+          "command": "ip:example.com"
         }
       ]
     }

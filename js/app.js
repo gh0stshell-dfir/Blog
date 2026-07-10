@@ -8,9 +8,19 @@
     let activeTab = 'offsec';
     let searchQuery = '';
 
+    function sortCategories(data) {
+        return [...data].sort((a, b) => {
+            const orderA = a.order ?? 999;
+            const orderB = b.order ?? 999;
+            if (orderA !== orderB) return orderA - orderB;
+            return a.title.localeCompare(b.title);
+        });
+    }
+
     const iconMap = {
         nmap: 'fa-network-wired',
         nuclei: 'fa-radiation',
+        'web-recon': 'fa-spider',
         'full-scans': 'fa-layer-group',
         gobuster: 'fa-folder-open',
         subdomain: 'fa-sitemap',
@@ -117,9 +127,15 @@
     }
 
     function renderPanels() {
-        document.getElementById('offsec-panel').innerHTML = offsecData.map((c) => renderSection(c, 'offsec')).join('');
-        document.getElementById('dfir-panel').innerHTML = dfirData.map((c) => renderSection(c, 'dfir')).join('');
-        document.getElementById('kql-panel').innerHTML = kqlData.map((c) => renderSection(c, 'kql')).join('');
+        document.getElementById('offsec-panel').innerHTML = sortCategories(offsecData)
+            .map((c) => renderSection(c, 'offsec'))
+            .join('');
+        document.getElementById('dfir-panel').innerHTML = sortCategories(dfirData)
+            .map((c) => renderSection(c, 'dfir'))
+            .join('');
+        document.getElementById('kql-panel').innerHTML = sortCategories(kqlData)
+            .map((c) => renderSection(c, 'kql'))
+            .join('');
 
         renderSectionNav();
         renderToolsRef();
@@ -139,9 +155,9 @@
     }
 
     function getActiveData() {
-        if (activeTab === 'offsec') return offsecData;
-        if (activeTab === 'dfir') return dfirData;
-        if (activeTab === 'kql') return kqlData;
+        if (activeTab === 'offsec') return sortCategories(offsecData);
+        if (activeTab === 'dfir') return sortCategories(dfirData);
+        if (activeTab === 'kql') return sortCategories(kqlData);
         return [];
     }
 
