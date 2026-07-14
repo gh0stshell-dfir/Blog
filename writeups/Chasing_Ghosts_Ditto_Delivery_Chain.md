@@ -3,7 +3,7 @@ id: ditto-delivery-chain
 title: "Ditto DLL Side-Loading and Domain Compromise"
 summary: "Quick Assist social engineering to Ditto DLL side-loading, malformed DNS C2, and KRBTGT compromise in under one hour."
 category: DFIR
-date: 2026-04-23
+date: 2026-06-24
 tags: [quick-assist, ditto, dll-sideload, domain-compromise, social-engineering]
 ---
 

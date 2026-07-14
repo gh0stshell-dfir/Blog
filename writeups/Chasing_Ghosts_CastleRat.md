@@ -3,7 +3,7 @@ id: castle-rat-delivery-chain
 title: "CastleRat Delivery Chain"
 summary: "ClickFix social engineering via cmdkey and remote schtasks, leading to a CastleRat implant with Steam profile dead-drop C2."
 category: DFIR
-date: 2026-06-24
+date: 2026-04-23
 tags: [clickfix, castle-rat, delivery-chain, windows, malware]
 ---
 
