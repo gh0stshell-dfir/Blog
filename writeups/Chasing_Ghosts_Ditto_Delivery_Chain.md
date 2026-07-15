@@ -1,7 +1,7 @@
 ---
 id: ditto-delivery-chain
 title: "Ditto DLL Side-Loading and Domain Compromise"
-summary: "Quick Assist social engineering to Ditto DLL side-loading, malformed DNS C2, and KRBTGT compromise in under one hour."
+summary: "Quick Assist to pdf24/user.dll (blocked) then Ditto with fake vcruntime140.dll, DNS C2, and KRBTGT compromise in under one hour."
 category: DFIR
 date: 2026-06-24
 tags: [quick-assist, ditto, dll-sideload, domain-compromise, social-engineering]
@@ -14,16 +14,16 @@ tags: [quick-assist, ditto, dll-sideload, domain-compromise, social-engineering]
 ```
 CLASS      : KRBTGT compromise / domain intrusion
 VECTOR     : Vishing + Microsoft Quick Assist
-IMPLANT    : DLL side-loaded RAT (Botan 3, AES-256-GCM, MinGW)
+IMPLANT    : Botan RAT via user.dll (pdf24) then fake vcruntime140.dll (Ditto)
 C2         : Malformed DNS over UDP/53 → 45.55.94.174
 TTX        : Domain compromise < 60 minutes
 RANSOMWARE : Not observed
 OBJECTIVE  : Persistent privileged access
 ```
 
-A user was social-engineered into accepting an unsolicited Microsoft Quick Assist session after a vishing call. The remote operator ran brief host reconnaissance, then dropped two MSI packages from the same staging host: the first was blocked by Defender as side-load behavior, the second installed a full Ditto-looking directory under the user profile and established Startup-folder persistence.
+A user was social-engineered into accepting an unsolicited Microsoft Quick Assist session after a vishing call. The remote operator ran brief host reconnaissance, then dropped two MSI packages from the same staging host. Stage 1 used a PDF-utility host (`pdf24.exe`) with malicious **`user.dll`** and was blocked by Defender. Stage 2 installed a Ditto-looking directory under the user profile: legitimate **`Ditto.exe`** side-loading a **fake `vcruntime140.dll`** implant, plus Startup-folder persistence.
 
-From there the case stopped looking like "someone installed a clipboard manager." Legitimate `Ditto.exe` side-loaded a custom Botan-based RAT from supporting DLLs in the same folder, beaconed over UDP/53 to a non-resolver IP with malformed DNS payloads, and within about thirty minutes the operator had coerced DC authentication, performed DCSync, and started RDP lateral movement with a Domain Admin service account. GetScreen and DWAgent were planted for extra footholds. No ransomware was observed. The objective was durable privileged access.
+From there the case stopped looking like "someone installed a clipboard manager." The fake runtime DLL is a MinGW/Botan RAT (same family as Stage 1 `user.dll`). It beaconed over UDP/53 to a non-resolver IP with malformed DNS payloads, and within about thirty minutes the operator had coerced DC authentication, performed DCSync, and started RDP lateral movement with a Domain Admin service account. GetScreen and DWAgent were planted for extra footholds. No ransomware was observed. The objective was durable privileged access.
 
 ## Attack Chain
 
@@ -31,9 +31,9 @@ From there the case stopped looking like "someone installed a clipboard manager.
 Social engineering (vishing)
   → Quick Assist session
   → Host recon (whoami, ipconfig, net user /domain)
-  → pd_53updates.msi (blocked by Defender)
+  → pd_53updates.msi → pdf24.exe + user.dll (blocked by Defender)
   → dt_53updates.msi (successful)
-  → Ditto.exe side-loads malicious DLLs from %LOCALAPPDATA%\Ditto\
+  → Ditto.exe side-loads fake vcruntime140.dll from %LOCALAPPDATA%\Ditto\
   → Botan RAT beacon (AES-256-GCM, UDP/53 C2)
   → PetitPotam (\PIPE\efsrpc → DC01)
   → NTLM relay (DC01 → 167.172.212.171)
@@ -68,7 +68,7 @@ Nothing exotic. User context, network placement, reachability of internal hosts,
 
 ## Payload Delivery
 
-### Stage 1 - Blocked
+### Stage 1 - Blocked (pdf24 + user.dll)
 
 First package from the staging host:
 
@@ -77,15 +77,17 @@ URL    : http://<C2-DROP>/pd_53updates.msi
 SOURCE : 45.61.163.226
 ```
 
-Defender blocked the side-load attempt:
+This stage attempted side-loading under a PDF-utility host (`pdf24.exe`). The malicious implant library was **`user.dll`** next to that host binary. Defender blocked the side-load attempt:
 
 ```
 Potential Side-Loaded Behavior Was Blocked
 ```
 
-The associated `pdf24.exe` payload was quarantined and an alert fired. That should have been the end of the story. It was not. Three minutes later the operator tried again with a different package.
+`pdf24.exe` / the associated payload was quarantined and an alert fired. That should have been the end of the story. It was not.
 
-### Stage 2 - Successful
+String extraction from the Stage 1 implant (`user.dll`) already shows the same Botan RAT family later seen under Ditto: MinGW/GCC 13-win32, Botan 3 AES-GCM, base64 C2 `NDUuNTUuOTQuMTc0` → `45.55.94.174`, implant GUID `573d2149-b7b1-4d54-b0d4-403195f3984e`, and the JSON beacon template. Compile stamp strings include `Jun 11 2026`. Three minutes later the operator switched hosts and tried again.
+
+### Stage 2 - Successful (Ditto + fake vcruntime140.dll)
 
 ```
 URL    : http://<C2-DROP>/dt_53updates.msi
@@ -94,14 +96,14 @@ SHA256 : 849a2c808694426b2afb8848dcea00f9e64538a503b05543e38af1fdee9dd9f8
 SIZE   : ~4.8 MB
 ```
 
-This MSI executed successfully and dropped a Ditto-shaped tree under the user profile. To a casual observer it looks like a clipboard manager install. To DFIR it is a classic dual-use package: one trusted host binary, several support DLLs next to it, and a Startup shortcut so it comes back at logon.
+This MSI executed successfully and dropped a Ditto-shaped tree under the user profile. To a casual observer it looks like a clipboard manager install. To DFIR it is a dual-use package: legitimate `Ditto.exe` as the host, a **fake `vcruntime140.dll`** as the implant, plus other support files and a Startup shortcut for logon persistence.
 
 #### Dropped paths
 
 ```
-%LOCALAPPDATA%\Ditto\Ditto.exe
+%LOCALAPPDATA%\Ditto\Ditto.exe              ← host (legitimate Ditto)
+%LOCALAPPDATA%\Ditto\vcruntime140.dll       ← FAKE / implant (side-loaded)
 %LOCALAPPDATA%\Ditto\mfc140u.dll
-%LOCALAPPDATA%\Ditto\vcruntime140.dll
 %LOCALAPPDATA%\Ditto\vcruntime140u.dll
 %LOCALAPPDATA%\Ditto\msvcp140.dll
 %LOCALAPPDATA%\Ditto\ICU_Loader.dll
@@ -118,28 +120,32 @@ This MSI executed successfully and dropped a Ditto-shaped tree under the user pr
 
 ## DLL Side-Loading
 
-`Ditto.exe` in this package is a real clipboard manager binary. It behaves like Ditto. The problem is not the EXE name. The problem is what it loads from its own directory.
+`Ditto.exe` in this package is a real clipboard manager binary. It behaves like Ditto. The problem is not the EXE name. The problem is the **fake VC runtime DLL** sitting next to it.
 
-When `Ditto.exe` starts, Windows resolves imports with the normal DLL search order. A DLL sitting next to the EXE is preferred over the system copy under `C:\Windows\System32\`. The legitimate process therefore loads attacker-controlled code in-process, under a trusted-looking process tree, without dropping a standalone unsigned RAT EXE on disk.
+When `Ditto.exe` starts, Windows resolves imports with the normal DLL search order. A local `vcruntime140.dll` is preferred over the system copy under `C:\Windows\System32\`. The legitimate process therefore loads attacker-controlled code in-process, under a trusted-looking process tree, without a standalone unsigned RAT EXE on disk.
 
 That is DLL side-loading. Boring, and effective.
 
-### Malicious / hijacked DLLs
+### Malicious libraries (confirmed)
 
-The implant package ships these support libraries beside `Ditto.exe`. These are the names to hunt and hash, not just "Ditto" as a concept:
+Two implant names, two host packages, same RAT family:
 
 ```
-DLL (relative to %LOCALAPPDATA%\Ditto\)     Notes
------------------------------------------  ------------------------------------------
-mfc140u.dll                                MFC runtime name; local hijack candidate
-vcruntime140.dll                           VC++ runtime name; local hijack candidate
-vcruntime140u.dll                          VC++ runtime name; local hijack candidate
-msvcp140.dll                               VC++ runtime name; local hijack candidate
-ICU_Loader.dll                             Non-standard support name in this package
-Addins\DittoUtil.dll                       Plugin-path DLL under Ditto Addins
+Stage   Host binary     Malicious DLL        Role
+------  --------------  -------------------  ------------------------------------------
+1       pdf24.exe       user.dll             Side-load implant (blocked by Defender)
+2       Ditto.exe       vcruntime140.dll     Fake VC++ runtime; successful side-load
 ```
 
-`Ditto.exe` is the host process. The malicious tradecraft lives in the supporting DLLs listed above (side-loaded into that process). Static string analysis of the implant DLL content showed a MinGW-built C++ RAT with Botan crypto, not a stock .NET or commodity packer stub.
+Stage 2 focus for hunting after the blocked PDF stage:
+
+```
+Path     %LOCALAPPDATA%\Ditto\vcruntime140.dll
+SHA256   9d20d9f17dddedd3ea057b68e42ef2ca86ff7c776d59b045213f377ba1707291
+Role     Fake vcruntime140; Botan RAT loaded by Ditto.exe
+```
+
+Other files under `%LOCALAPPDATA%\Ditto\` complete the install appearance (MFC/VC companions, `ICU_Loader.dll`, `Addins\DittoUtil.dll`, settings/language). The implant to prioritize is the **fake `vcruntime140.dll`**. Stage 1's **`user.dll`** is the same family under the PDF host and should be treated as an earlier attempt, not a different actor.
 
 ### Why Ditto
 
@@ -163,20 +169,26 @@ Inside random malware, those APIs get attention. Inside `Ditto.exe`, they look l
 
 The implant does not need to hide every capability. It needs to hide **context** by running inside a process whose job already looks like monitoring and enumeration.
 
-### Static strings (implant DLL)
+### Static strings (user.dll / fake vcruntime140.dll)
+
+Strings from the Stage 1 implant dump (`user.dll`) and consistent with the Stage 2 fake `vcruntime140.dll` family:
 
 ```
 GCC: (GNU) 13-win32
 libgcc_s_dw2-1.dll
-Botan 3.0.0 (unreleased, ...)
+Botan 3.0.0 (unreleased, revision unknown, distribution unspecified)
 AES-256/GCM
 GHASH requires a 128-bit nonce
 Invalid authentication tag
 BOTAN_MLOCK_POOL_SIZE
-RtlGenRandom
+RtlGenRandom / SystemFunction036
+NDUuNTUuOTQuMTc0
+573d2149-b7b1-4d54-b0d4-403195f3984e
+{"name": "%s", "build_date": "%s %s", "arch": "windows", "username": "%s", "pid": "%d" }
+Jun 11 2026
 ```
 
-MinGW-w64 build with statically linked Botan 3. Not MSVC, not a thin .NET loader. Hand-rolled C++ with real crypto.
+MinGW-w64 build with statically linked Botan 3. Not MSVC, not a thin .NET loader. Hand-rolled C++ with real crypto. The Stage 1 `user.dll` dump also shows heavy `userenv.dll` export-forward style strings (SysWOW64 userenv API names), consistent with a proxy/side-load library wrapper around the implant payload.
 
 ### Imports and capabilities
 
@@ -301,9 +313,9 @@ Three independent footholds: Ditto/Botan on the original workstation, GetScreen 
 13:29  Quick Assist session established
 13:31  Recon commands (whoami, ping, ipconfig, nslookup)
 13:36  Stage 1 MSI downloaded from 45.61.163.226
-13:38  Stage 1 side-load blocked by Defender
+13:38  Stage 1 side-load blocked (pdf24.exe + user.dll)
 13:39  Defender alert → SOC queue
-13:39  Stage 2 MSI (dt_53updates.msi) downloaded
+13:39  Stage 2 MSI (dt_53updates.msi) downloaded; Ditto + fake vcruntime140.dll
 13:43  ITSM ticket created
 13:45  Internal enumeration (Kerberos, LDAP, SMB, RDP)
 13:47  PetitPotam activity against DC01 (\PIPE\efsrpc)
@@ -369,13 +381,16 @@ NDUuNTUuOTQuMTc0    Base64 for 45.55.94.174
 ### Files and hashes (SHA256)
 
 ```
-Path / file                                      Hash
+Path / file                                      Notes / Hash
 -----------------------------------------------  ----------------------------------------------------------------
+user.dll (Stage 1, with pdf24.exe)               Malicious implant (blocked); same Botan family as Stage 2
 dt_53updates.msi                                 849a2c808694426b2afb8848dcea00f9e64538a503b05543e38af1fdee9dd9f8
-%LOCALAPPDATA%\Ditto\Ditto.exe                   b120f170046b0ba5952d4957dd25e0a394ad28f743b47f2152c973e9fd94f08d
+%LOCALAPPDATA%\Ditto\Ditto.exe                   Host binary
+                                                 b120f170046b0ba5952d4957dd25e0a394ad28f743b47f2152c973e9fd94f08d
+%LOCALAPPDATA%\Ditto\vcruntime140.dll            FAKE implant (primary Stage 2 side-load)
+                                                 9d20d9f17dddedd3ea057b68e42ef2ca86ff7c776d59b045213f377ba1707291
 %LOCALAPPDATA%\Ditto\mfc140u.dll                 27ebf5ed915a573aa10a4ec18b3626a297032f3c46afc2daf45d8bb1ffecfe66
 %LOCALAPPDATA%\Ditto\msvcp140.dll                968bbd2a36b04cc5795c6fc99afe85e4d294ff9c28032ce0e870463827181799
-%LOCALAPPDATA%\Ditto\vcruntime140.dll            9d20d9f17dddedd3ea057b68e42ef2ca86ff7c776d59b045213f377ba1707291
 %LOCALAPPDATA%\Ditto\vcruntime140u.dll           eb6a3a491efcc911f9dff457d42fed85c4c170139414470ea951b0dafe352829
 %LOCALAPPDATA%\Ditto\ICU_Loader.dll              15a9c2550759eee371d57fa69e4d7d596235f2f061cd17ca123cba535a24fbcd
 %LOCALAPPDATA%\Ditto\Addins\DittoUtil.dll        1ba47b26175855cba499ff8e951af5193e662319e96d497f4270daac440da1fd
@@ -437,8 +452,10 @@ rule Ditto_BotanRAT_Implant
 
 ### Endpoint
 
+- `pdf24.exe` loading `user.dll` from a non-system / drop directory (Stage 1)
 - `Ditto.exe` executing from `%LOCALAPPDATA%\Ditto\` without a corresponding software inventory / install record
-- Loads of `mfc140u.dll`, `vcruntime140.dll`, `vcruntime140u.dll`, `msvcp140.dll`, `ICU_Loader.dll`, or `DittoUtil.dll` from that same non-system directory
+- `Ditto.exe` loading `vcruntime140.dll` from `%LOCALAPPDATA%\Ditto\` instead of `System32` / `SysWOW64` (Stage 2 implant)
+- Hash match on fake `vcruntime140.dll` (`9d20d9f1…07291`) or Botan/string YARA hits on `user.dll` / that DLL
 - `msiexec.exe` writing a new binary tree under `%LOCALAPPDATA%\Ditto\`
 - Startup folder `.lnk` files pointing at `%LOCALAPPDATA%\Ditto\Ditto.exe`
 
