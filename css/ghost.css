@@ -1209,12 +1209,26 @@ footer {
     color: var(--primary);
 }
 
+#writeup-detail-view {
+    max-width: 820px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+#writeup-detail-view .back-link {
+    display: inline-flex;
+    margin-bottom: 1rem;
+}
+
 .writeup-article {
     background: var(--card);
     border: 1px solid var(--card-border);
     border-radius: 6px;
-    padding: 2rem;
-    max-width: 800px;
+    padding: 2rem 2.5rem;
+    max-width: 820px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .writeup-article h1 {
@@ -1224,6 +1238,19 @@ footer {
     letter-spacing: 1px;
     line-height: 1.35;
     margin: 0.75rem 0 1rem;
+    text-align: center;
+}
+
+.writeup-article .writeup-card-header,
+.writeup-article .writeup-tags {
+    justify-content: center;
+    text-align: center;
+}
+
+.writeup-article .writeup-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
 }
 
 .writeup-body {
@@ -1231,6 +1258,11 @@ footer {
     font-size: 0.9rem;
     line-height: 1.75;
     color: var(--light);
+}
+
+/* Markdown often includes a duplicate page title as h1 */
+.writeup-body > h1:first-child {
+    display: none;
 }
 
 .writeup-body h2 {
@@ -1323,6 +1355,7 @@ footer {
     border: 1px solid var(--card-border);
     border-radius: 4px;
     overflow: hidden;
+    table-layout: fixed;
 }
 
 .writeup-body thead th {
@@ -1337,11 +1370,17 @@ footer {
     padding: 0.65rem 0.85rem;
 }
 
+.writeup-body thead th:first-child {
+    width: 28%;
+}
+
 .writeup-body tbody td {
-    padding: 0.55rem 0.85rem;
+    padding: 0.65rem 0.85rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     color: var(--light);
     vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 .writeup-body tbody tr:last-child td {
@@ -1350,13 +1389,21 @@ footer {
 
 .writeup-body tbody td:first-child {
     color: var(--muted);
-    white-space: nowrap;
-    width: 1%;
+    font-weight: 500;
 }
 
 .writeup-body tbody code {
-    white-space: normal;
+    display: inline-block;
+    max-width: 100%;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.78rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
     word-break: break-all;
+    overflow-wrap: anywhere;
+    background: rgba(0, 212, 255, 0.06);
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
 }
 
 @media (max-width: 768px) {

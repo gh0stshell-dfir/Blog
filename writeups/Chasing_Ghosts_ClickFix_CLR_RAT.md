@@ -240,33 +240,36 @@ C2 Activity
 
 ### mod_s_enterprise
 
-| Field | Value |
-|-------|-------|
-| MD5 | `881d500742127a52ae5a52a29de66ffb` |
-| SHA1 | `c4b150ad42a10b514a643357c8d7f9a9105f3ba1` |
-| SHA256 | `4d9c5a3c56f5747ed6ae519c11e99bb56edfccb324ddf63f7ce8a7ada340485a` |
-| Format | PE32+, x86-64, MinGW/GCC 15.x |
-| Role | Injector / secondary stage fetcher |
+```
+MD5      881d500742127a52ae5a52a29de66ffb
+SHA1     c4b150ad42a10b514a643357c8d7f9a9105f3ba1
+SHA256   4d9c5a3c56f5747ed6ae519c11e99bb56edfccb324ddf63f7ce8a7ada340485a
+Format   PE32+, x86-64, MinGW/GCC 15.x
+Role     Injector / secondary stage fetcher
+```
 
 ### student_S.bin
 
-| Field | Value |
-|-------|-------|
-| Type | PE32+, x64, native (no managed metadata) |
-| Compiled | 2026-07-08 23:09:10 UTC |
-| SHA256 | `53d83e993c624528043881ff9758ef606d77487e682230714c510b272d68b7db` |
-| Notable string | `sub00` (`.data`) |
+```
+Type     PE32+, x64, native (no managed metadata)
+Compiled 2026-07-08 23:09:10 UTC
+SHA256   53d83e993c624528043881ff9758ef606d77487e682230714c510b272d68b7db
+String   sub00 (.data)
+```
 
 ## Indicators of Compromise
 
 ### Hashes
 
-| Hash | Object |
-|------|--------|
-| `4d9c5a3c56f5747ed6ae519c11e99bb56edfccb324ddf63f7ce8a7ada340485a` | mod_s_enterprise (SHA256) |
-| `881d500742127a52ae5a52a29de66ffb` | mod_s_enterprise (MD5) |
-| `c4b150ad42a10b514a643357c8d7f9a9105f3ba1` | mod_s_enterprise (SHA1) |
-| `53d83e993c624528043881ff9758ef606d77487e682230714c510b272d68b7db` | student_S.bin (SHA256) |
+```
+mod_s_enterprise
+  MD5     881d500742127a52ae5a52a29de66ffb
+  SHA1    c4b150ad42a10b514a643357c8d7f9a9105f3ba1
+  SHA256  4d9c5a3c56f5747ed6ae519c11e99bb56edfccb324ddf63f7ce8a7ada340485a
+
+student_S.bin
+  SHA256  53d83e993c624528043881ff9758ef606d77487e682230714c510b272d68b7db
+```
 
 ### Network
 
