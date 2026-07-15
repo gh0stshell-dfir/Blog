@@ -21,9 +21,9 @@ RANSOMWARE : Not observed
 OBJECTIVE  : Persistent privileged access
 ```
 
-Unsolicited Quick Assist session after a vishing call. Operator ran host recon, deployed two MSI packages (first blocked by Defender, second successful), and established persistence via a side-loaded DLL under a legitimate Ditto install.
+A user was social-engineered into accepting an unsolicited Microsoft Quick Assist session after a vishing call. The remote operator ran brief host reconnaissance, then dropped two MSI packages from the same staging host: the first was blocked by Defender as side-load behavior, the second installed a full Ditto-looking directory under the user profile and established Startup-folder persistence.
 
-Within 30 minutes: PetitPotam-style coercion, NTLM relay, and DCSync against the domain controller. A Domain Admin service account was used for RDP lateral movement. GetScreen and DWAgent were installed for additional persistence.
+From there the case stopped looking like "someone installed a clipboard manager." Legitimate `Ditto.exe` side-loaded a custom Botan-based RAT from supporting DLLs in the same folder, beaconed over UDP/53 to a non-resolver IP with malformed DNS payloads, and within about thirty minutes the operator had coerced DC authentication, performed DCSync, and started RDP lateral movement with a Domain Admin service account. GetScreen and DWAgent were planted for extra footholds. No ransomware was observed. The objective was durable privileged access.
 
 ## Attack Chain
 
@@ -33,25 +33,27 @@ Social engineering (vishing)
   → Host recon (whoami, ipconfig, net user /domain)
   → pd_53updates.msi (blocked by Defender)
   → dt_53updates.msi (successful)
-  → Ditto.exe side-loads malicious DLL
+  → Ditto.exe side-loads malicious DLLs from %LOCALAPPDATA%\Ditto\
   → Botan RAT beacon (AES-256-GCM, UDP/53 C2)
   → PetitPotam (\PIPE\efsrpc → DC01)
   → NTLM relay (DC01 → 167.172.212.171)
   → DCSync (DRSGetNCChanges)
-  → KRBTGT hash extraction
+  → KRBTGT / privileged hash extraction
   → Lateral movement via <svc_account> (RDP)
   → GetScreen + DWAgent persistence
 ```
 
 ## Initial Access
 
-A Quick Assist session was initiated by an external party and accepted by the user. Quick Assist runs with the logged-on user's context and is typically allowed by default in enterprise environments.
+The entry point was not an exploit. It was a person on a phone and a built-in remote-help tool.
 
-The operator's first actions were standard interactive reconnaissance.
+Microsoft Quick Assist was initiated by an external party and accepted by the user. Quick Assist runs in the logged-on user's context and is often allowed by default in enterprise environments, which makes it an attractive hands-on-keyboard vector once trust is established via vishing.
+
+The operator did not need privilege elevation at this stage. They already had an interactive session as the victim.
 
 ## Host Reconnaissance
 
-Commands observed within two minutes of session start:
+Within about two minutes of the session starting, standard interactive recon was observed:
 
 ```
 whoami
@@ -62,11 +64,13 @@ nslookup <internal-host>
 net user /domain
 ```
 
-These establish user context, network placement, reachable internal hosts, and domain membership.
+Nothing exotic. User context, network placement, reachability of internal hosts, and domain membership. Enough to decide whether the host was worth the payload.
 
 ## Payload Delivery
 
 ### Stage 1 - Blocked
+
+First package from the staging host:
 
 ```
 URL    : http://<C2-DROP>/pd_53updates.msi
@@ -79,11 +83,9 @@ Defender blocked the side-load attempt:
 Potential Side-Loaded Behavior Was Blocked
 ```
 
-The associated `pdf24.exe` payload was quarantined and an alert was generated.
+The associated `pdf24.exe` payload was quarantined and an alert fired. That should have been the end of the story. It was not. Three minutes later the operator tried again with a different package.
 
 ### Stage 2 - Successful
-
-Three minutes later, a second MSI was retrieved:
 
 ```
 URL    : http://<C2-DROP>/dt_53updates.msi
@@ -92,7 +94,9 @@ SHA256 : 849a2c808694426b2afb8848dcea00f9e64538a503b05543e38af1fdee9dd9f8
 SIZE   : ~4.8 MB
 ```
 
-Files dropped to `%LOCALAPPDATA%\Ditto\`:
+This MSI executed successfully and dropped a Ditto-shaped tree under the user profile. To a casual observer it looks like a clipboard manager install. To DFIR it is a classic dual-use package: one trusted host binary, several support DLLs next to it, and a Startup shortcut so it comes back at logon.
+
+#### Dropped paths
 
 ```
 %LOCALAPPDATA%\Ditto\Ditto.exe
@@ -106,7 +110,7 @@ Files dropped to `%LOCALAPPDATA%\Ditto\`:
 %LOCALAPPDATA%\Ditto\Ditto.Settings
 ```
 
-Persistence via Startup folder shortcut:
+#### Persistence
 
 ```
 %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Ditto.lnk
@@ -114,11 +118,52 @@ Persistence via Startup folder shortcut:
 
 ## DLL Side-Loading
 
-`Ditto.exe` is a legitimate clipboard manager. The malicious code resides in a supporting DLL loaded via standard DLL search order - the local copy in `%LOCALAPPDATA%\Ditto\` resolves before `C:\Windows\System32\`.
+`Ditto.exe` in this package is a real clipboard manager binary. It behaves like Ditto. The problem is not the EXE name. The problem is what it loads from its own directory.
 
-Ditto's legitimate behavior (clipboard hooks, window enumeration, process listing) provides cover for similar API usage by the implant.
+When `Ditto.exe` starts, Windows resolves imports with the normal DLL search order. A DLL sitting next to the EXE is preferred over the system copy under `C:\Windows\System32\`. The legitimate process therefore loads attacker-controlled code in-process, under a trusted-looking process tree, without dropping a standalone unsigned RAT EXE on disk.
 
-### Static Analysis - Implant Strings
+That is DLL side-loading. Boring, and effective.
+
+### Malicious / hijacked DLLs
+
+The implant package ships these support libraries beside `Ditto.exe`. These are the names to hunt and hash, not just "Ditto" as a concept:
+
+```
+DLL (relative to %LOCALAPPDATA%\Ditto\)     Notes
+-----------------------------------------  ------------------------------------------
+mfc140u.dll                                MFC runtime name; local hijack candidate
+vcruntime140.dll                           VC++ runtime name; local hijack candidate
+vcruntime140u.dll                          VC++ runtime name; local hijack candidate
+msvcp140.dll                               VC++ runtime name; local hijack candidate
+ICU_Loader.dll                             Non-standard support name in this package
+Addins\DittoUtil.dll                       Plugin-path DLL under Ditto Addins
+```
+
+`Ditto.exe` is the host process. The malicious tradecraft lives in the supporting DLLs listed above (side-loaded into that process). Static string analysis of the implant DLL content showed a MinGW-built C++ RAT with Botan crypto, not a stock .NET or commodity packer stub.
+
+### Why Ditto
+
+A real clipboard manager already does things EDRs treat as suspicious in unknown binaries:
+
+```
+AddClipboardFormatListener
+SetWindowsHookEx
+FindShellTrayWindow
+SendNotifyMessage
+Process enumeration
+```
+
+Inside random malware, those APIs get attention. Inside `Ditto.exe`, they look like product behavior. The operator did not pick Ditto at random:
+
+1. Open-source and easy to repackage
+2. Legitimate distributions are unremarkable / often trusted by users
+3. Clipboard, hooks, and window enumeration are expected
+4. Small footprint and common enough to ignore in triage
+5. Local DLL search order makes side-loading straightforward
+
+The implant does not need to hide every capability. It needs to hide **context** by running inside a process whose job already looks like monitoring and enumeration.
+
+### Static strings (implant DLL)
 
 ```
 GCC: (GNU) 13-win32
@@ -131,9 +176,9 @@ BOTAN_MLOCK_POOL_SIZE
 RtlGenRandom
 ```
 
-MinGW-w64 build with statically linked Botan 3 cryptography. Uncommon compared to typical .NET or Delphi commodity RATs.
+MinGW-w64 build with statically linked Botan 3. Not MSVC, not a thin .NET loader. Hand-rolled C++ with real crypto.
 
-### Imports and Capabilities
+### Imports and capabilities
 
 ```
 Threading        : CreateThread, ExitThread, ResumeThread
@@ -147,27 +192,31 @@ Evasion          : IsNativeVhdBoot, DisableThreadLibraryCalls
 Dynamic Loading  : LoadLibraryA, GetProcAddress
 ```
 
-### C2 Address (Base64)
+In practice: multi-threaded work, in-memory allocation/execution, Winsock networking, directory enumeration, host profiling, and dynamic API resolution.
+
+### C2 address (Base64)
 
 ```
 NDUuNTUuOTQuMTc0  →  45.55.94.174
 ```
 
-### Beacon Format
+### Beacon format
 
 ```json
 {
-  "name":     "%s",
+  "name":      "%s",
   "build_date":"%s %s",
-  "arch":     "windows",
-  "username": "%s",
-  "pid":      "%d"
+  "arch":      "windows",
+  "username":  "%s",
+  "pid":       "%d"
 }
 ```
 
-Runtime fields: hostname, compile timestamp, architecture (`windows`), logged-on user, process ID. Payload is encrypted with AES-256-GCM before transmission.
+Runtime fields include hostname, compile timestamp, architecture (`windows`), logged-on user, and PID. Beacon payload encrypted with AES-256-GCM before send.
 
 ## C2 - Malformed DNS over UDP/53
+
+Sandbox and network telemetry repeatedly showed:
 
 ```
 DESTINATION : 45.55.94.174
@@ -176,28 +225,32 @@ PROTOCOL    : UDP
 ORIGIN      : %LOCALAPPDATA%\Ditto\Ditto.exe
 ```
 
-Traffic was sent directly to the attacker IP, not to the corporate resolver. Packet inspection showed malformed DNS payloads - sufficient to blend into NetFlow as DNS traffic but not valid queries. Port 53 outbound is commonly unrestricted; payload encryption prevents content inspection without endpoint visibility.
+Traffic was not aimed at the corporate resolver or a public DNS service. It went straight to an attacker IP listening on 53/udp. Packet contents were not valid DNS queries: close enough to look like "DNS" in NetFlow, useless as real name resolution.
+
+This is DNS-as-transport, not DNS-as-service. Outbound 53/udp is open on most workstations. Combined with AES-GCM inside the implant, the channel is encrypted and low-suspicion unless you inspect protocol validity or destination reputation.
 
 ## Post-Exploitation
 
-### PetitPotam / NTLM Relay
+Once the implant was up, the operator moved from "foothold on one laptop" to "domain problem" quickly.
 
-Nine minutes after payload deployment:
+### PetitPotam / NTLM relay
 
-```
-TARGET   : DC01
-PIPE     : \PIPE\efsrpc
-INTERFACE: EFSRPC (MS-EFSR)
-```
-
-Followed by outbound authentication from the DC:
+About nine minutes after the successful MSI:
 
 ```
-SOURCE  : DC01 (ntoskrnl context)
-DEST    : 167.172.212.171 (DigitalOcean)
+TARGET    : DC01
+PIPE      : \PIPE\efsrpc
+INTERFACE : EFSRPC (MS-EFSR)
 ```
 
-Consistent with coerced DC authentication relayed to an external attacker host.
+That pattern matches PetitPotam-style coercion: abuse EFSRPC to force a remote host (here, the DC) to authenticate to an attacker-chosen destination. Immediately after, the DC opened outbound auth:
+
+```
+SOURCE : DC01 (ntoskrnl context)
+DEST   : 167.172.212.171 (DigitalOcean)
+```
+
+Consistent with NTLM relay of the coerced DC authentication to external infrastructure. In a hardened environment, EFSRPC patches, SMB signing, EPA, and channel binding make this much harder. Here, it went through.
 
 ### DCSync
 
@@ -209,15 +262,23 @@ TARGET    : DC01
 SOURCE    : <workstation>
 ```
 
-`DRSGetNCChanges` from a workstation indicates DCSync (Mimikatz, Impacket, or equivalent). This typically yields `krbtgt`, service account, and domain admin hashes. KRBTGT compromise enables Golden Ticket forgery until a double KRBTGT password reset is performed.
+`DRSGetNCChanges` from a workstation is the classic DCSync signal (Mimikatz, Impacket, or similar). That implies credentials with directory replication rights, most likely obtained via the relay path above, and active hash harvesting from AD.
 
-### Privileged Service Account
+Expect at least:
 
-A service account (`<svc_account>`) held Domain Administrator membership with no logon restrictions, no source-host restrictions, and a long-unchanged password. Post-DCSync, this account was used for RDP to additional hosts.
+- `krbtgt`
+- privileged / service account hashes
+- other high-value directory secrets
 
-### Lateral Movement and Persistence
+KRBTGT compromise is domain-ending until a **double** KRBTGT password reset (and usually a broader credential reset). That was the correct containment recommendation and was executed later the same day.
 
-RDP sessions using `<svc_account>`:
+### Privileged service account
+
+Directory review turned up `<svc_account>`: a service account with Domain Administrator membership, no meaningful logon or source-host restrictions, and a long-unchanged password. After DCSync, the operator had its material. That account, not the DLL craft, is what made multi-host RDP trivial.
+
+### Lateral movement and extra persistence
+
+RDP as `<svc_account>`:
 
 ```
 TARGET 1 : <print-server>
@@ -225,14 +286,14 @@ TARGET 2 : <test-server>
 PROTOCOL : RDP (TCP/3389)
 ```
 
-Additional remote access tools deployed:
+Additional remote-access tools:
 
 ```
 <print-server> : GetScreen.me agent
 <test-server>  : DWAgent
 ```
 
-Three independent footholds resulted: the Ditto implant, GetScreen on the print server, and DWAgent on the test server.
+Three independent footholds: Ditto/Botan on the original workstation, GetScreen on the print server, DWAgent on the test server. Isolate one host and you still have two others.
 
 ## Timeline (MDT)
 
@@ -292,43 +353,32 @@ Three independent footholds resulted: the Ditto implant, GetScreen on the print 
 ### Network
 
 ```
-45.55.94.174 - C2 (DNS-tunneled, UDP/53)
-45.61.163.226 - MSI staging host
-167.172.212.171 - NTLM relay endpoint (DigitalOcean)
+Indicator           Role
+------------------  ----------------------------------------
+45.55.94.174        C2 (DNS-tunneled, UDP/53)
+45.61.163.226       MSI staging host
+167.172.212.171     NTLM relay endpoint (DigitalOcean)
 ```
 
-### Encoded Strings
+### Encoded strings
 
 ```
-NDUuNTUuOTQuMTc0 - Base64 for 45.55.94.174
+NDUuNTUuOTQuMTc0    Base64 for 45.55.94.174
 ```
 
-### Files
+### Files and hashes (SHA256)
 
 ```
-dt_53updates.msi
-  SHA256 : 849a2c808694426b2afb8848dcea00f9e64538a503b05543e38af1fdee9dd9f8
-
-%LOCALAPPDATA%\Ditto\Ditto.exe
-  SHA256 : b120f170046b0ba5952d4957dd25e0a394ad28f743b47f2152c973e9fd94f08d
-
-%LOCALAPPDATA%\Ditto\mfc140u.dll
-  SHA256 : 27ebf5ed915a573aa10a4ec18b3626a297032f3c46afc2daf45d8bb1ffecfe66
-
-%LOCALAPPDATA%\Ditto\msvcp140.dll
-  SHA256 : 968bbd2a36b04cc5795c6fc99afe85e4d294ff9c28032ce0e870463827181799
-
-%LOCALAPPDATA%\Ditto\vcruntime140.dll
-  SHA256 : 9d20d9f17dddedd3ea057b68e42ef2ca86ff7c776d59b045213f377ba1707291
-
-%LOCALAPPDATA%\Ditto\vcruntime140u.dll
-  SHA256 : eb6a3a491efcc911f9dff457d42fed85c4c170139414470ea951b0dafe352829
-
-%LOCALAPPDATA%\Ditto\ICU_Loader.dll
-  SHA256 : 15a9c2550759eee371d57fa69e4d7d596235f2f061cd17ca123cba535a24fbcd
-
-%LOCALAPPDATA%\Ditto\Addins\DittoUtil.dll
-  SHA256 : 1ba47b26175855cba499ff8e951af5193e662319e96d497f4270daac440da1fd
+Path / file                                      Hash
+-----------------------------------------------  ----------------------------------------------------------------
+dt_53updates.msi                                 849a2c808694426b2afb8848dcea00f9e64538a503b05543e38af1fdee9dd9f8
+%LOCALAPPDATA%\Ditto\Ditto.exe                   b120f170046b0ba5952d4957dd25e0a394ad28f743b47f2152c973e9fd94f08d
+%LOCALAPPDATA%\Ditto\mfc140u.dll                 27ebf5ed915a573aa10a4ec18b3626a297032f3c46afc2daf45d8bb1ffecfe66
+%LOCALAPPDATA%\Ditto\msvcp140.dll                968bbd2a36b04cc5795c6fc99afe85e4d294ff9c28032ce0e870463827181799
+%LOCALAPPDATA%\Ditto\vcruntime140.dll            9d20d9f17dddedd3ea057b68e42ef2ca86ff7c776d59b045213f377ba1707291
+%LOCALAPPDATA%\Ditto\vcruntime140u.dll           eb6a3a491efcc911f9dff457d42fed85c4c170139414470ea951b0dafe352829
+%LOCALAPPDATA%\Ditto\ICU_Loader.dll              15a9c2550759eee371d57fa69e4d7d596235f2f061cd17ca123cba535a24fbcd
+%LOCALAPPDATA%\Ditto\Addins\DittoUtil.dll        1ba47b26175855cba499ff8e951af5193e662319e96d497f4270daac440da1fd
 ```
 
 ### Persistence
@@ -337,20 +387,20 @@ dt_53updates.msi
 %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Ditto.lnk
 ```
 
-### Implant Identifier
+### Implant identifier
 
 ```
 573d2149-b7b1-4d54-b0d4-403195f3984e
 ```
 
-### Build Artifacts
+### Build artifacts
 
 ```
-"Botan 3.0.0 (unreleased, revision unknown)"
-"AES-256/GCM"
-"GCC: (GNU) 13-win32"
-"libgcc_s_dw2-1.dll"
-"BOTAN_MLOCK_POOL_SIZE"
+Botan 3.0.0 (unreleased, revision unknown)
+AES-256/GCM
+GCC: (GNU) 13-win32
+libgcc_s_dw2-1.dll
+BOTAN_MLOCK_POOL_SIZE
 ```
 
 ## YARA Rule
@@ -387,10 +437,10 @@ rule Ditto_BotanRAT_Implant
 
 ### Endpoint
 
-- `Ditto.exe` executing from `%LOCALAPPDATA%\Ditto\` without a corresponding install record
-- `vcruntime140.dll` or `msvcp140.dll` loaded from non-system paths
-- `msiexec.exe` writing into a new binary under `%LOCALAPPDATA%`
-- Startup folder `.lnk` files pointing to `%LOCALAPPDATA%` paths
+- `Ditto.exe` executing from `%LOCALAPPDATA%\Ditto\` without a corresponding software inventory / install record
+- Loads of `mfc140u.dll`, `vcruntime140.dll`, `vcruntime140u.dll`, `msvcp140.dll`, `ICU_Loader.dll`, or `DittoUtil.dll` from that same non-system directory
+- `msiexec.exe` writing a new binary tree under `%LOCALAPPDATA%\Ditto\`
+- Startup folder `.lnk` files pointing at `%LOCALAPPDATA%\Ditto\Ditto.exe`
 
 ### Identity
 
@@ -401,8 +451,8 @@ rule Ditto_BotanRAT_Implant
 
 ### Network
 
-- UDP/53 to non-resolver destinations
-- UDP/53 payloads failing DNS protocol validation
+- UDP/53 to non-resolver destinations (especially cloud VPS ranges)
+- UDP/53 payloads that fail DNS protocol validation
 - Domain controllers initiating outbound NTLM to cloud provider ranges
 - Workstation traffic to DigitalOcean without legitimate SaaS correlation
 
@@ -410,7 +460,7 @@ rule Ditto_BotanRAT_Implant
 
 - Quick Assist sessions from non-corporate Microsoft accounts
 - Multiple MSI downloads from the same external IP in a short window
-- Remote support agents installed on servers without change tickets
+- Remote support agents (GetScreen, DWAgent) installed on servers without change tickets
 
 ## Recommendations
 
@@ -418,7 +468,7 @@ rule Ditto_BotanRAT_Implant
 
 1. Restrict Quick Assist via GPO to IT workstations that require it.
 2. Block remote support installers (GetScreen, DWAgent, AnyDesk, ScreenConnect, TeamViewer) on non-IT endpoints via AppLocker or WDAC.
-3. Deploy Defender for Identity on all domain controllers.
+3. Deploy Defender for Identity (or equivalent) on all domain controllers.
 4. Audit service accounts for Domain Admin membership and remove unnecessary privileges.
 5. Apply PetitPotam mitigations: EFSRPC patches, SMB signing, EPA, channel binding.
 
@@ -428,11 +478,11 @@ rule Ditto_BotanRAT_Implant
 2. Deploy LAPS for local administrator accounts.
 3. Disable NTLM where Kerberos is sufficient.
 4. Conditional Access policies blocking privileged accounts on standard workstations.
-5. Include vishing scenarios in security awareness training.
+5. Include vishing / fake helpdesk scenarios in security awareness training.
 
 ## Root Cause
 
-No zero-day or novel exploit was used. Contributing factors:
+No zero-day was required. The intrusion stacked ordinary failures:
 
 1. User accepted an unsolicited Quick Assist session.
 2. A service account held Domain Administrator rights without restrictions.
@@ -440,3 +490,6 @@ No zero-day or novel exploit was used. Contributing factors:
 4. Authentication coercion and NTLM relay mitigations were incomplete.
 5. Outbound UDP/53 to arbitrary destinations was unrestricted.
 6. Remote support software could be installed on servers without alerting.
+
+The DLL craft and DNS C2 mattered for the foothold. The over-privileged service account and missing identity controls decided the blast radius.
+
