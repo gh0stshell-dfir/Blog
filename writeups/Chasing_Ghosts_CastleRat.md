@@ -235,27 +235,26 @@ Exfiltration over resolved C2 `45.88.106.190:4545`.
 ### Hashes (SHA256)
 
 ```
-maestrovsd.exe
-  e25534efbab99f08ca802c6d3974c2ff7c47ddd6e6ed71a84a94c2fddd7de4e2
-
-install.pyc
-  b953bb0acb76848f889909256d67d01d44cc45d83c8bfc3421783ac0a79688fc
-
-melody.pyc
-  91919832f20d8fb78bab82844a430ecbe02a07df3f317316a8c34f54e3bb45c2
+File            Hash
+--------------  ----------------------------------------------------------------
+maestrovsd.exe  e25534efbab99f08ca802c6d3974c2ff7c47ddd6e6ed71a84a94c2fddd7de4e2
+install.pyc     b953bb0acb76848f889909256d67d01d44cc45d83c8bfc3421783ac0a79688fc
+melody.pyc      91919832f20d8fb78bab82844a430ecbe02a07df3f317316a8c34f54e3bb45c2
 ```
 
 ### Network
 
-| Indicator | Role |
-|-----------|------|
-| `195.10.205.171` | SMB staging (cmdkey target) |
-| `yhofgafjle[.]com` | PowerShell stager host |
-| `162.33.177.16` | Payload distribution (HTTP) |
-| `adamcold[.]com` | Payload distribution (HTTPS) |
-| `212.43.154.198:23814` | Initial C2 (Latvia) |
-| `45.88.106.190:4545` | Resolved C2 (Netherlands) |
-| `8.3.0.253` | Backup C2 |
+```
+Indicator                  Role
+-------------------------  --------------------------------
+195.10.205.171             SMB staging (cmdkey target)
+yhofgafjle[.]com           PowerShell stager host
+162.33.177.16              Payload distribution (HTTP)
+adamcold[.]com             Payload distribution (HTTPS)
+212.43.154.198:23814       Initial C2 (Latvia)
+45.88.106.190:4545         Resolved C2 (Netherlands)
+8.3.0.253                  Backup C2
+```
 
 ### Dead Drop
 

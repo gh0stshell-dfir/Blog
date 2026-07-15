@@ -222,11 +222,13 @@ C2 Activity
 
 ### Infrastructure roles
 
-| Host | Role |
-|------|------|
-| `158.94.211.77` | ClickFix delivery |
-| `158.94.211.76` | Payload staging (`/s_enterprise`, `/enterprise/student_s.bin`) |
-| `91.92.243.161:3038` | Operational C2 |
+```
+Host                Role
+------------------  --------------------------------------------------------
+158.94.211.77       ClickFix delivery
+158.94.211.76       Payload staging (/s_enterprise, /enterprise/student_s.bin)
+91.92.243.161:3038  Operational C2
+```
 
 ## Artifacts
 
@@ -262,24 +264,25 @@ String   sub00 (.data)
 ### Hashes
 
 ```
-mod_s_enterprise
-  MD5     881d500742127a52ae5a52a29de66ffb
-  SHA1    c4b150ad42a10b514a643357c8d7f9a9105f3ba1
-  SHA256  4d9c5a3c56f5747ed6ae519c11e99bb56edfccb324ddf63f7ce8a7ada340485a
-
-student_S.bin
-  SHA256  53d83e993c624528043881ff9758ef606d77487e682230714c510b272d68b7db
+File               Type    Hash
+-----------------  ------  ----------------------------------------------------------------
+mod_s_enterprise   MD5     881d500742127a52ae5a52a29de66ffb
+mod_s_enterprise   SHA1    c4b150ad42a10b514a643357c8d7f9a9105f3ba1
+mod_s_enterprise   SHA256  4d9c5a3c56f5747ed6ae519c11e99bb56edfccb324ddf63f7ce8a7ada340485a
+student_S.bin      SHA256  53d83e993c624528043881ff9758ef606d77487e682230714c510b272d68b7db
 ```
 
 ### Network
 
-| Indicator | Role |
-|-----------|------|
-| `158.94.211.77` | ClickFix / initial PowerShell stage |
-| `158.94.211.76` | Payload host |
-| `http://158.94.211.76/s_enterprise` | Donut shellcode |
-| `http://158.94.211.76/enterprise/student_s.bin` | Secondary PE |
-| `91.92.243.161:3038` | Operational C2 |
+```
+Indicator                                          Role
+-------------------------------------------------  --------------------------------
+158.94.211.77                                      ClickFix / initial PowerShell stage
+158.94.211.76                                      Payload host
+http://158.94.211.76/s_enterprise                  Donut shellcode
+http://158.94.211.76/enterprise/student_s.bin      Secondary PE
+91.92.243.161:3038                                 Operational C2
+```
 
 ### Process / runtime
 
