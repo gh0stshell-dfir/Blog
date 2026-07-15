@@ -360,7 +360,7 @@ rule Ditto_BotanRAT_Implant
 {
     meta:
         description = "Detects Ditto-side-loaded Botan RAT implant"
-        author      = "gh0stshell-dfir"
+        author      = "ghostsh-labs"
 
     strings:
         $botan   = "Botan 3.0.0 (unreleased" ascii
