@@ -6,7 +6,7 @@
     <title>GHOST - DFIR Artifact Cheat Sheet</title>
     <meta name="description" content="DFIR artifact locations cheat sheet - Prefetch, ShellBags, AmCache, and more">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/ghost.css">
+    <link rel="stylesheet" href="css/ghost.css?v=6">
 </head>
 <body>
     <div class="cyber-grid"></div>
@@ -33,7 +33,7 @@
     <main class="container">
         <section class="search-container">
             <h1>ARTIFACT CHEAT SHEET</h1>
-            <p class="subtitle">core first · collapsible sections · paths, registry keys &amp; parsers</p>
+            <p class="subtitle">core first · collapsible sections &amp; cards · paths, registry keys &amp; parsers</p>
 
             <input
                 type="text"
@@ -43,6 +43,18 @@
                 aria-label="Search artifacts"
                 style="max-width: 700px; width: 100%;"
             >
+
+            <div class="artifact-controls">
+                <button type="button" id="filter-core" class="artifact-control-btn" aria-pressed="false">
+                    <i class="fas fa-star"></i> Core only
+                </button>
+                <button type="button" id="expand-all" class="artifact-control-btn">
+                    <i class="fas fa-expand-alt"></i> Expand all
+                </button>
+                <button type="button" id="collapse-all" class="artifact-control-btn">
+                    <i class="fas fa-compress-alt"></i> Collapse all
+                </button>
+            </div>
         </section>
 
         <nav class="section-nav" id="section-nav"></nav>
@@ -65,8 +77,8 @@
         <i class="fas fa-chevron-up"></i>
     </button>
 
-    <script src="js/artifacts-data.js"></script>
+    <script src="js/artifacts-data.js?v=6"></script>
     <script src="js/ghost-common.js"></script>
-    <script src="js/artifacts.js"></script>
+    <script src="js/artifacts.js?v=6"></script>
 </body>
 </html>
