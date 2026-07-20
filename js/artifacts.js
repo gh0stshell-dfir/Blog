@@ -33,16 +33,26 @@
             artifact.registry,
             artifact.parser,
             artifact.notes,
+            artifact.tier,
+            categoryId,
         ]
             .filter(Boolean)
             .join(' ')
             .toLowerCase();
 
+        const isCore = artifact.tier === 'core';
+        const badge = isCore
+            ? '<span class="artifact-badge core" title="High-frequency DFIR artifact">core</span>'
+            : '';
+
         return `
-            <article class="artifact-card" data-search="${escapeHtml(searchText)}">
+            <article class="artifact-card${isCore ? ' is-core' : ''}" data-search="${escapeHtml(searchText)}" data-tier="${isCore ? 'core' : 'ref'}">
                 <div class="artifact-header">
                     <h3>${escapeHtml(artifact.name)}</h3>
-                    <span class="artifact-tag">${escapeHtml(categoryId)}</span>
+                    <div class="artifact-badges">
+                        ${badge}
+                        <span class="artifact-tag">${escapeHtml(categoryId)}</span>
+                    </div>
                 </div>
                 <p class="artifact-desc">${escapeHtml(artifact.description)}</p>
                 <div class="artifact-fields">
@@ -85,31 +95,70 @@
             </article>`;
     }
 
+    function renderSection(cat) {
+        const isOpen = cat.defaultOpen ? 'open' : '';
+        const expanded = cat.defaultOpen ? 'true' : 'false';
+        const count = cat.artifacts.length;
+        const coreCount = cat.artifacts.filter((a) => a.tier === 'core').length;
+
+        return `
+            <section class="tool-section artifact-section ${isOpen}" id="${cat.id}" data-section="${cat.id}">
+                <button class="tool-section-toggle" aria-expanded="${expanded}" aria-controls="${cat.id}-body">
+                    <span class="tool-section-chevron" aria-hidden="true"><i class="fas fa-chevron-right"></i></span>
+                    <span class="tool-section-icon"><i class="fas ${cat.icon}"></i></span>
+                    <span class="tool-section-title">${escapeHtml(cat.title)}</span>
+                    ${coreCount ? `<span class="tool-section-core-count" title="Core artifacts">${coreCount} core</span>` : ''}
+                    <span class="tool-section-count">${count}</span>
+                </button>
+                <div class="tool-section-body" id="${cat.id}-body">
+                    <div class="artifacts-grid">
+                        ${cat.artifacts.map((a) => renderArtifact(a, cat.id)).join('')}
+                    </div>
+                </div>
+            </section>`;
+    }
+
     function render() {
         const data = window.GHOST_ARTIFACTS;
         const container = document.getElementById('artifacts-content');
         const nav = document.getElementById('section-nav');
 
-        container.innerHTML = data
+        container.innerHTML = data.map((cat) => renderSection(cat)).join('');
+
+        nav.innerHTML = data
             .map(
-                (cat) => `
-            <section class="artifact-section" id="${cat.id}">
-                <h2 class="tool-category">
-                    <i class="fas ${cat.icon}"></i> ${escapeHtml(cat.title)}
-                </h2>
-                <div class="artifacts-grid">
-                    ${cat.artifacts.map((a) => renderArtifact(a, cat.id)).join('')}
-                </div>
-            </section>`
+                (cat) =>
+                    `<a href="#${cat.id}" class="section-pill" data-section-target="${cat.id}">${escapeHtml(cat.title)}</a>`
             )
             .join('');
 
-        nav.innerHTML = data
-            .map((cat) => `<a href="#${cat.id}" class="section-pill">${escapeHtml(cat.title)}</a>`)
-            .join('');
-
+        bindSectionToggles();
+        bindSectionNav();
         bindCopyButtons();
         applySearch();
+    }
+
+    function bindSectionToggles() {
+        document.querySelectorAll('.tool-section-toggle').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const section = btn.closest('.tool-section');
+                const isOpen = section.classList.toggle('open');
+                btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            });
+        });
+    }
+
+    function bindSectionNav() {
+        document.querySelectorAll('#section-nav .section-pill').forEach((pill) => {
+            pill.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.getElementById(pill.dataset.sectionTarget);
+                if (!target) return;
+                target.classList.add('open');
+                target.querySelector('.tool-section-toggle')?.setAttribute('aria-expanded', 'true');
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
     }
 
     function bindCopyButtons() {
@@ -139,17 +188,25 @@
         const q = searchQuery.toLowerCase().trim();
         let visible = 0;
 
-        document.querySelectorAll('.artifact-card').forEach((card) => {
-            const match = !q || card.dataset.search.includes(q);
-            card.classList.toggle('hidden', !match);
-            if (match) visible++;
-        });
-
         document.querySelectorAll('.artifact-section').forEach((section) => {
-            const hasVisible = [...section.querySelectorAll('.artifact-card')].some(
-                (c) => !c.classList.contains('hidden')
-            );
-            section.style.display = hasVisible ? '' : 'none';
+            let sectionVisible = 0;
+
+            section.querySelectorAll('.artifact-card').forEach((card) => {
+                const match = !q || card.dataset.search.includes(q);
+                card.classList.toggle('hidden', !match);
+                if (match) {
+                    visible++;
+                    sectionVisible++;
+                }
+            });
+
+            // Auto-open matching sections while searching
+            if (q && sectionVisible > 0) {
+                section.classList.add('open');
+                section.querySelector('.tool-section-toggle')?.setAttribute('aria-expanded', 'true');
+            }
+
+            section.classList.toggle('section-hidden', sectionVisible === 0 && !!q);
         });
 
         let noResults = document.getElementById('no-results');
